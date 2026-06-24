@@ -5,6 +5,7 @@ import type { POI } from "../types";
 import SkeletonLoader from "./SkeletonLoader.vue";
 import EmptyState from "./EmptyState.vue";
 import ErrorState from "./ErrorState.vue";
+import { usePhotoUpload } from "../composables/usePhotoUpload";
 
 const props = defineProps<{
   tripId: string;
@@ -24,6 +25,19 @@ const newName = ref("");
 const newCategory = ref("attraction");
 const newAddress = ref("");
 const newNotes = ref("");
+
+const { uploading, photos, handleFileSelect, removePhoto, uploadPhotos, reset } = usePhotoUpload();
+
+function extractImageUrls(notes: string | null): string[] {
+  if (!notes) return [];
+  const urls: string[] = [];
+  const re = /!\[.*?\]\((.*?)\)/g;
+  let m;
+  while ((m = re.exec(notes)) !== null) {
+    urls.push(m[1]);
+  }
+  return urls;
+}
 
 // Edit form
 const editName = ref("");
@@ -71,19 +85,27 @@ function openAddModal() {
   newCategory.value = "attraction";
   newAddress.value = "";
   newNotes.value = "";
+  reset();
   showAddModal.value = true;
 }
 
 async function handleAdd() {
   if (!newName.value) return;
   try {
+    let notes = newNotes.value || "";
+    if (photos.value.length > 0) {
+      const urls = await uploadPhotos();
+      const photoMd = urls.map((u: string) => `![](${u})`).join("\n");
+      notes = notes ? `${notes}\n\n${photoMd}` : photoMd;
+    }
     await poiApi.create(props.tripId, {
       name: newName.value,
       category: newCategory.value,
       address: newAddress.value || undefined,
-      notes: newNotes.value || undefined,
+      notes: notes || undefined,
     });
     showAddModal.value = false;
+    reset();
     await fetchPois();
   } catch {
     // ignore
@@ -214,6 +236,14 @@ onMounted(() => {
               </span>
             </div>
             <p v-if="poi.address" class="text-xs text-gray-500 truncate">{{ poi.address }}</p>
+            <div v-if="extractImageUrls(poi.notes).length" class="flex gap-1 mt-1">
+              <img
+                v-for="url in extractImageUrls(poi.notes).slice(0, 3)"
+                :key="url"
+                :src="url"
+                class="h-14 w-14 rounded-lg object-cover"
+              />
+            </div>
             <p v-if="poi.notes" class="mt-1 text-xs text-gray-400 line-clamp-2">{{ poi.notes }}</p>
           </div>
           <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition flex-shrink-0 ml-2">
@@ -278,6 +308,37 @@ onMounted(() => {
               class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
               placeholder="可選"
             ></textarea>
+          </div>
+
+          <!-- Photo picker -->
+          <div class="space-y-2">
+            <label class="block text-xs text-gray-500">照片（最多 9 張，選填）</label>
+            <div v-if="photos.length" class="grid grid-cols-3 gap-2">
+              <div v-for="(photo, i) in photos" :key="i" class="relative">
+                <img :src="photo" class="h-20 w-full rounded-lg object-cover" />
+                <button
+                  type="button"
+                  @click="removePhoto(i)"
+                  class="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs text-white"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+            <label
+              v-if="photos.length < 9"
+              class="flex h-20 cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-gray-300 hover:border-indigo-400"
+            >
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                multiple
+                class="hidden"
+                @change="handleFileSelect"
+              />
+              <span class="text-xs text-gray-400">＋ 新增照片</span>
+            </label>
           </div>
 
           <div class="flex justify-end gap-2 pt-2">
