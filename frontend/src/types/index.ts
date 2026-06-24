@@ -37,12 +37,16 @@ export interface Activity {
   title: string;
   notes: string | null;
   start_time: string | null;
+  end_time: string | null;
   duration_minutes: number | null;
+  transport_mode: string | null;
+  from_location_id: string | null;
+  to_location_id: string | null;
   category: ActivityCategory;
   order_index: number;
   created_at: string | null;
   updated_at: string | null;
-  location: { lat: number | null; lng: number | null } | null;
+  location: { lat: number | null; lng: number | null; name?: string | null } | null;
 }
 
 export type ActivityCategory =
@@ -51,6 +55,10 @@ export type ActivityCategory =
   | "attraction"
   | "shopping"
   | "accommodation"
+  | "flight"
+  | "train"
+  | "bus"
+  | "ferry"
   | "other";
 
 export interface Memory {
@@ -74,49 +82,17 @@ export interface Location {
   place_id: string | null;
 }
 
-export interface ExpenseSplit {
-  id: string;
-  user_id: string;
-  user_name: string;
-  share_amount: number;
-  settled: boolean;
-}
-
-export interface Expense {
+export interface POI {
   id: string;
   trip_id: string;
-  activity_id: string | null;
-  paid_by: string;
-  paid_by_name: string;
-  title: string;
-  category: ExpenseCategory;
-  amount: number;
-  currency: string;
+  name: string;
+  address: string | null;
+  lat: number | null;
+  lng: number | null;
+  place_id: string | null;
   notes: string | null;
-  date: string;
-  splits: ExpenseSplit[];
+  category: string;
   created_at: string | null;
-}
-
-export type ExpenseCategory =
-  | "food"
-  | "transport"
-  | "accommodation"
-  | "activity"
-  | "shopping"
-  | "other";
-
-export interface BudgetSummary {
-  total_expenses: number;
-  by_category: Record<string, number>;
-  per_person: Record<string, number>;
-  balances: Array<{
-    user_id: string;
-    name: string;
-    paid: number;
-    share: number;
-    balance: number;
-  }>;
 }
 
 export interface GeocodeResult {
@@ -132,6 +108,10 @@ export const CATEGORY_LABELS: Record<ActivityCategory, string> = {
   attraction: "🏛️ 景點",
   shopping: "🛍️ 購物",
   accommodation: "🏨 住宿",
+  flight: "✈️ 航班",
+  train: "🚄 火車",
+  bus: "🚌 巴士",
+  ferry: "⛴️ 渡輪",
   other: "📌 其他",
 };
 
@@ -141,5 +121,9 @@ export const CATEGORY_COLORS: Record<ActivityCategory, string> = {
   attraction: "bg-purple-100 text-purple-800",
   shopping: "bg-pink-100 text-pink-800",
   accommodation: "bg-green-100 text-green-800",
+  flight: "bg-sky-100 text-sky-800",
+  train: "bg-teal-100 text-teal-800",
+  bus: "bg-amber-100 text-amber-800",
+  ferry: "bg-cyan-100 text-cyan-800",
   other: "bg-gray-100 text-gray-800",
 };

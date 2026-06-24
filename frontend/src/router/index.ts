@@ -31,6 +31,17 @@ const router = createRouter({
       name: "SharedTrip",
       component: () => import("../views/SharedTripView.vue"),
     },
+    {
+      path: "/join",
+      name: "GuestJoin",
+      component: () => import("../views/GuestJoinView.vue"),
+    },
+    {
+      path: "/admin",
+      name: "Admin",
+      component: () => import("../views/AdminView.vue"),
+      meta: { requiresAuth: true },
+    },
   ],
 });
 

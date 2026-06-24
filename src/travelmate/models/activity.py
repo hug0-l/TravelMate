@@ -14,6 +14,10 @@ class ActivityCategory(str, PyEnum):
     SHOPPING = "shopping"
     ACCOMMODATION = "accommodation"
     OTHER = "other"
+    FLIGHT = "flight"
+    TRAIN = "train"
+    BUS = "bus"
+    FERRY = "ferry"
 
 
 class Activity(Base, TimestampMixin):
@@ -25,7 +29,11 @@ class Activity(Base, TimestampMixin):
     title: Mapped[str] = mapped_column(String(200))
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     start_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    end_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     duration_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    transport_mode: Mapped[str | None] = mapped_column(String(50), nullable=True)  # flight/train/bus/ferry/car
+    from_location_id: Mapped[str | None] = mapped_column(ForeignKey("locations.id", ondelete="SET NULL"), nullable=True)
+    to_location_id: Mapped[str | None] = mapped_column(ForeignKey("locations.id", ondelete="SET NULL"), nullable=True)
     category: Mapped[ActivityCategory] = mapped_column(
         Enum(ActivityCategory, name="activity_category"),
         default=ActivityCategory.OTHER,
@@ -35,3 +43,5 @@ class Activity(Base, TimestampMixin):
     # relationships
     day = relationship("Day", back_populates="activities")
     location = relationship("Location", back_populates="activities", lazy="selectin")
+    from_location = relationship("Location", foreign_keys=[from_location_id], lazy="selectin")
+    to_location = relationship("Location", foreign_keys=[to_location_id], lazy="selectin")

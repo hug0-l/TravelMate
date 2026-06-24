@@ -7,6 +7,7 @@ from src.travelmate.models.activity import Activity, ActivityCategory
 from src.travelmate.models.location import Location
 from src.travelmate.models.expense import Expense, ExpenseCategory, Split
 from src.travelmate.models.memory import Memory
+from src.travelmate.models.poi import POI
 from src.travelmate.models.user import User
 
 __all__ = [
@@ -22,5 +23,6 @@ __all__ = [
     "ExpenseCategory",
     "Split",
     "Memory",
+    "POI",
     "Location",
 ]

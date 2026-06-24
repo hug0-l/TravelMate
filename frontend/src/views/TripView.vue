@@ -179,7 +179,48 @@ const activeDayId = ref("");
 const newActTitle = ref("");
 const newActCategory = ref<ActivityCategory>("other");
 const newActTime = ref("");
+const newActEndTime = ref("");
+const newActTransportMode = ref("");
 const newActNotes = ref("");
+// Edit activity modal
+const showEditActivity = ref(false);
+const editingActId = ref("");
+const editActDayId = ref("");
+const editActTitle = ref("");
+const editActCategory = ref<ActivityCategory>("other");
+const editActStartTime = ref("");
+const editActEndTime = ref("");
+const editActNotes = ref("");
+const editActTransportMode = ref("");
+
+function openEditActivity(act: Activity) {
+  editingActId.value = act.id;
+  editActDayId.value = act.day_id;
+  editActTitle.value = act.title;
+  editActCategory.value = act.category;
+  editActStartTime.value = act.start_time || "";
+  editActEndTime.value = act.end_time || "";
+  editActNotes.value = act.notes || "";
+  editActTransportMode.value = act.transport_mode || "";
+  showEditActivity.value = true;
+}
+
+async function handleUpdateActivity() {
+  if (!editingActId.value) return;
+  try {
+    await tripStore.updateActivity(editingActId.value, {
+      title: editActTitle.value,
+      category: editActCategory.value,
+      start_time: editActStartTime.value || undefined,
+      end_time: editActEndTime.value || undefined,
+      notes: editActNotes.value || undefined,
+      transport_mode: editActTransportMode.value || undefined,
+    });
+    showEditActivity.value = false;
+  } catch {
+    // ignore
+  }
+}
 
 // Geocode search
 const geoQuery = ref("");
@@ -195,7 +236,9 @@ function openNewActivity(dayId: string) {
   newActTitle.value = "";
   newActCategory.value = "other";
   newActTime.value = "";
+  newActEndTime.value = "";
   newActNotes.value = "";
+  newActTransportMode.value = "";
   showNewActivity.value = true;
 }
 
@@ -214,7 +257,9 @@ async function handleCreateActivity() {
     title: newActTitle.value,
     category: newActCategory.value,
     start_time: newActTime.value || undefined,
+    end_time: newActEndTime.value || undefined,
     notes: newActNotes.value || undefined,
+    transport_mode: newActTransportMode.value || undefined,
   });
   showNewActivity.value = false;
 }
@@ -530,7 +575,7 @@ onUnmounted(() => {
                   >
                     <!-- Time badge -->
                     <div class="w-14 flex-shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-center text-xs font-medium text-gray-500">
-                      {{ act.start_time || '--:--' }}
+                      {{ act.start_time || '--:--' }}{{ act.end_time ? ' - ' + act.end_time : '' }}
                     </div>
 
                     <!-- Category badge -->
@@ -546,13 +591,11 @@ onUnmounted(() => {
                       <p v-if="act.notes" class="text-xs text-gray-400 mt-0.5 truncate">{{ act.notes }}</p>
                     </div>
 
-                    <!-- Delete -->
-                    <button
-                      @click="handleDeleteActivity(act.id)"
-                      class="text-gray-200 hover:text-red-500 text-xs opacity-0 group-hover:opacity-100 transition flex-shrink-0"
-                    >
-                      ✕
-                    </button>
+                    <!-- Actions -->
+                    <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition flex-shrink-0">
+                      <button @click="openEditActivity(act)" class="text-gray-300 hover:text-indigo-500 text-xs" title="編輯">✏️</button>
+                      <button @click="handleDeleteActivity(act.id)" class="text-gray-300 hover:text-red-500 text-xs" title="刪除">✕</button>
+                    </div>
                   </div>
                 </VueDraggable>
               </div>
@@ -567,7 +610,6 @@ onUnmounted(() => {
         >
           ＋ 新增天數
         </button>
-      </div>
       </div>
 
       <!-- ========== MAP TAB ========== -->
@@ -776,6 +818,55 @@ onUnmounted(() => {
         </div>
       </div>
 
+    <!-- ========== EDIT ACTIVITY MODAL ========== -->
+    <div v-if="showEditActivity" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40" @click.self="showEditActivity = false">
+      <div class="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+        <h3 class="mb-4 text-lg font-bold">✏️ 編輯活動</h3>
+        <form @submit.prevent="handleUpdateActivity" class="space-y-3">
+          <input v-model="editActTitle" placeholder="活動名稱" required class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500" />
+
+          <div class="flex gap-2">
+            <div class="flex-1">
+              <label class="block text-xs text-gray-500">類別</label>
+              <select v-model="editActCategory" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                <option v-for="(label, key) in CATEGORY_LABELS" :key="key" :value="key">{{ label }}</option>
+              </select>
+            </div>
+            <div class="flex-1">
+              <label class="block text-xs text-gray-500">開始</label>
+              <input v-model="editActStartTime" type="time" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            </div>
+            <div class="flex-1">
+              <label class="block text-xs text-gray-500">結束</label>
+              <input v-model="editActEndTime" type="time" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs text-gray-500">交通方式</label>
+            <select v-model="editActTransportMode" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+              <option value="">無</option>
+              <option value="flight">✈️ 航班</option>
+              <option value="train">🚄 火車</option>
+              <option value="bus">🚌 巴士</option>
+              <option value="ferry">⛴️ 渡輪</option>
+              <option value="car">🚗 自駕</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-xs text-gray-500">備註</label>
+            <textarea v-model="editActNotes" rows="2" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="可選"></textarea>
+          </div>
+
+          <div class="flex justify-end gap-2 pt-2">
+            <button type="button" @click="showEditActivity = false" class="rounded-lg px-4 py-2 text-sm text-gray-600 hover:bg-gray-100">取消</button>
+            <button type="submit" class="rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white hover:bg-indigo-700">儲存</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
 <!-- ========== NEW DAY MODAL ========== -->
     <div v-if="showNewDay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40" @click.self="showNewDay = false">
       <div class="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
@@ -806,9 +897,25 @@ onUnmounted(() => {
               </select>
             </div>
             <div class="flex-1">
-              <label class="block text-xs text-gray-500">時間</label>
+              <label class="block text-xs text-gray-500">開始</label>
               <input v-model="newActTime" type="time" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
             </div>
+            <div class="flex-1">
+              <label class="block text-xs text-gray-500">結束</label>
+              <input v-model="newActEndTime" type="time" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs text-gray-500">交通方式</label>
+            <select v-model="newActTransportMode" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+              <option value="">無</option>
+              <option value="flight">✈️ 航班</option>
+              <option value="train">🚄 火車</option>
+              <option value="bus">🚌 巴士</option>
+              <option value="ferry">⛴️ 渡輪</option>
+              <option value="car">🚗 自駕</option>
+            </select>
           </div>
 
           <div>

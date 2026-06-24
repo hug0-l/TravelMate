@@ -1,8 +1,9 @@
 import uuid
+import random
 from datetime import date
 from enum import Enum as PyEnum
 
-from sqlalchemy import Date, Enum, Integer, String, Text, ForeignKey, UniqueConstraint
+from sqlalchemy import Date, Enum, Float, Integer, String, Text, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.travelmate.models.base import Base, TimestampMixin, uuid_pk
@@ -26,6 +27,7 @@ class Trip(Base, TimestampMixin):
     share_code: Mapped[str] = mapped_column(
         String(36), unique=True, index=True, default=lambda: str(uuid.uuid4())[:8]
     )
+    join_code: Mapped[str] = mapped_column(String(10), default=lambda: str(random.randint(100000, 999999)))
     visibility: Mapped[TripVisibility] = mapped_column(
         Enum(TripVisibility, name="trip_visibility"),
         default=TripVisibility.PRIVATE,
@@ -34,12 +36,14 @@ class Trip(Base, TimestampMixin):
     origin_country: Mapped[str | None] = mapped_column(String(100), nullable=True)
     destination_country: Mapped[str | None] = mapped_column(String(100), nullable=True)
     destination_tz_offset: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Hours from UTC, e.g. +9 for Japan")
+    planned_budget: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # relationships
     members = relationship("TripMember", back_populates="trip", lazy="selectin", cascade="all, delete-orphan")
     days = relationship("Day", back_populates="trip", lazy="selectin", cascade="all, delete-orphan", order_by="Day.order_index")
     expenses = relationship("Expense", back_populates="trip", lazy="selectin", cascade="all, delete-orphan")
     memories = relationship("Memory", back_populates="trip", lazy="selectin", cascade="all, delete-orphan")
+    pois = relationship("POI", back_populates="trip", lazy="selectin", cascade="all, delete-orphan")
 
 
 class TripMember(Base, TimestampMixin):

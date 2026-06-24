@@ -138,3 +138,11 @@ export const expenseApi = {
 export const shareApi = {
   get: (shareCode: string) => api.get(`/trips/share/${shareCode}`),
 };
+
+/* Guest */
+export const guestApi = {
+  join: (data: { trip_id: string; join_code: string; nickname: string }) =>
+    api.post("/trips/join", data),
+  getJoinInfo: (tripId: string) =>
+    api.get(`/trips/${tripId}/join-info`),
+};

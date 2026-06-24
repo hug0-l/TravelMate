@@ -11,24 +11,33 @@ class LocationBrief(BaseModel):
 
     lat: float | None = None
     lng: float | None = None
+    name: str | None = None
 
 
 class ActivityCreate(BaseModel):
     title: str
     notes: Optional[str] = None
     start_time: Optional[time] = None
+    end_time: Optional[time] = None
     duration_minutes: Optional[int] = None
+    transport_mode: Optional[str] = None
     category: ActivityCategory = ActivityCategory.OTHER
     location_id: Optional[str] = None
+    from_location_id: Optional[str] = None
+    to_location_id: Optional[str] = None
 
 
 class ActivityUpdate(BaseModel):
     title: Optional[str] = None
     notes: Optional[str] = None
     start_time: Optional[time] = None
+    end_time: Optional[time] = None
     duration_minutes: Optional[int] = None
+    transport_mode: Optional[str] = None
     category: Optional[ActivityCategory] = None
     location_id: Optional[str] = None
+    from_location_id: Optional[str] = None
+    to_location_id: Optional[str] = None
 
 
 class ActivityResponse(BaseModel):
@@ -40,7 +49,11 @@ class ActivityResponse(BaseModel):
     title: str
     notes: Optional[str] = None
     start_time: Optional[time] = None
+    end_time: Optional[time] = None
     duration_minutes: Optional[int] = None
+    transport_mode: Optional[str] = None
+    from_location_id: Optional[str] = None
+    to_location_id: Optional[str] = None
     category: ActivityCategory
     order_index: int
     created_at: datetime | None = None

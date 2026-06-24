@@ -79,7 +79,7 @@ export const useTripStore = defineStore("trip", () => {
     delete activities.value[dayId];
   }
 
-  async function createActivity(dayId: string, data: { title: string; notes?: string; start_time?: string; duration_minutes?: number; category?: string; location_id?: string }) {
+  async function createActivity(dayId: string, data: { title: string; notes?: string; start_time?: string; end_time?: string; duration_minutes?: number; category?: string; location_id?: string; transport_mode?: string }) {
     let res;
     try {
       res = await activityApi.create(dayId, data);
@@ -90,7 +90,7 @@ export const useTripStore = defineStore("trip", () => {
     return res.data;
   }
 
-  async function updateActivity(activityId: string, data: { title?: string; notes?: string; start_time?: string; duration_minutes?: number; category?: string; location_id?: string }) {
+  async function updateActivity(activityId: string, data: { title?: string; notes?: string; start_time?: string; end_time?: string; duration_minutes?: number; category?: string; location_id?: string; transport_mode?: string }) {
     const res = await activityApi.update(activityId, data);
     for (const dayId in activities.value) {
       const idx = activities.value[dayId].findIndex((a) => a.id === activityId);
