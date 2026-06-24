@@ -21,6 +21,8 @@ node_modules/
 frontend/dist/
 
 # Database
+# Uploads
+uploads/
 *.db
 *.sqlite3
 
