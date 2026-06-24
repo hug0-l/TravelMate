@@ -12,9 +12,9 @@ import {
   type Activity,
   type ActivityCategory,
   type GeocodeResult,
-  type Day,
+type Day,
 } from "../types";
-import { LMap, LTileLayer, LMarker, LPopup, LPolyline } from "@vue-leaflet/vue-leaflet";
+import { LMap, LTileLayer, LMarker, LPopup, LPolyline, LIcon } from "@vue-leaflet/vue-leaflet";
 import L from "leaflet";
 
 // Fix Leaflet default marker icon path issue with bundlers
@@ -421,6 +421,16 @@ const mapMarkers = computed(() => {
   return markers;
 });
 
+const poiMarkers = computed(() => {
+  return pois.value
+    .filter(p => p.lat && p.lng)
+    .map(p => ({
+      lat: p.lat!,
+      lng: p.lng!,
+      poi: p,
+    }));
+});
+
 const BUDGET_LABELS: Record<string, string> = {
   food: "🍜 美食",
   transport: "🚆 交通",
@@ -803,6 +813,15 @@ onUnmounted(() => {
               <div class="text-sm">
                 <p class="font-bold">{{ m.activity.title }}</p>
                 <p class="text-xs text-gray-500">{{ m.day.date }} · {{ CATEGORY_LABELS[m.activity.category] }}</p>
+              </div>
+            </LPopup>
+          </LMarker>
+          <LMarker v-for="(pm, i) in poiMarkers" :key="'poi-' + i" :lat-lng="[pm.lat, pm.lng]">
+            <LIcon :icon="L.divIcon({ className: 'poi-marker', html: '📍', iconSize: [24, 24] })" />
+            <LPopup>
+              <div class="text-sm">
+                <p class="font-bold">{{ pm.poi.name }}</p>
+                <p class="text-xs text-gray-500">{{ pm.poi.category }}</p>
               </div>
             </LPopup>
           </LMarker>
