@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.travelmate.config import settings
 from src.travelmate.database import engine
 from src.travelmate.models import Base
-from src.travelmate.routers import auth, trips, days, activities, geocode, share, members, ws, expenses, memories, guest, admin
+from src.travelmate.routers import auth, trips, days, activities, geocode, share, members, ws, expenses, memories, guest, pois, admin
 
 
 @asynccontextmanager
@@ -42,4 +42,5 @@ app.include_router(ws.router)
 app.include_router(expenses.router)
 app.include_router(memories.router)
 app.include_router(guest.router)
+app.include_router(pois.router)
 app.include_router(admin.router)
