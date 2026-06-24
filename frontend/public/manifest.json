@@ -1,7 +1,7 @@
 {
   "name": "TravelMate",
   "short_name": "TravelMate",
-  "description": "旅遊規劃助手 — 行程編輯、地圖、預算管理",
+  "description": "旅遊規劃助手 — 行程編輯、地圖、預算管理、興趣點、離線支援",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f9fafb",

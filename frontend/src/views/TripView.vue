@@ -37,7 +37,7 @@ import OfflineBanner from "../components/OfflineBanner.vue";
 const route = useRoute();
 const router = useRouter();
 const tripStore = useTripStore();
-const auth = useAuthStore();
+const auth = useAuthStore();const navigator = window.navigator;
 
 let tripId = route.params.id as string;
 
