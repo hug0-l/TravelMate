@@ -15,6 +15,10 @@ class POICreate(BaseModel):
 
 class POIUpdate(BaseModel):
     name: Optional[str] = None
+    address: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    place_id: Optional[str] = None
     notes: Optional[str] = None
     category: Optional[str] = None
 
