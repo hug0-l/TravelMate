@@ -1,14 +1,16 @@
 import io
 
 import pytest
+from httpx import AsyncClient
 
 
 @pytest.mark.asyncio
-async def test_upload_image(client):
+async def test_upload_image(client: AsyncClient, auth_headers: dict):
     file_content = b"fake-image-bytes"
     resp = await client.post(
         "/api/files/upload",
         files={"file": ("test.png", io.BytesIO(file_content), "image/png")},
+        headers=auth_headers,
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -17,11 +19,12 @@ async def test_upload_image(client):
 
 
 @pytest.mark.asyncio
-async def test_upload_jpeg(client):
+async def test_upload_jpeg(client: AsyncClient, auth_headers: dict):
     file_content = b"fake-jpeg-bytes"
     resp = await client.post(
         "/api/files/upload",
         files={"file": ("photo.jpg", io.BytesIO(file_content), "image/jpeg")},
+        headers=auth_headers,
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -30,11 +33,12 @@ async def test_upload_jpeg(client):
 
 
 @pytest.mark.asyncio
-async def test_upload_non_image_returns_400(client):
+async def test_upload_non_image_returns_400(client: AsyncClient, auth_headers: dict):
     file_content = b"fake-text-content"
     resp = await client.post(
         "/api/files/upload",
         files={"file": ("test.txt", io.BytesIO(file_content), "text/plain")},
+        headers=auth_headers,
     )
     assert resp.status_code == 400
     data = resp.json()
@@ -43,10 +47,11 @@ async def test_upload_non_image_returns_400(client):
 
 @pytest.mark.asyncio
 @pytest.mark.xfail(reason="File size limit not yet implemented")
-async def test_upload_large_file_returns_error(client):
+async def test_upload_large_file_returns_error(client: AsyncClient, auth_headers: dict):
     file_content = b"x" * (11 * 1024 * 1024)  # >10MB
     resp = await client.post(
         "/api/files/upload",
         files={"file": ("huge.png", io.BytesIO(file_content), "image/png")},
+        headers=auth_headers,
     )
     assert resp.status_code in (400, 413)
