@@ -181,6 +181,15 @@ const newExpenseCategory = ref<string>("other");
 const newExpensePaidBy = ref("");
 const newExpenseSplitWith = ref<string[]>([]);
 
+function openAddExpense() {
+  newExpenseTitle.value = "";
+  newExpenseAmount.value = null;
+  newExpenseCategory.value = "other";
+  newExpensePaidBy.value = auth.user?.id || "";
+  newExpenseSplitWith.value = [];
+  showAddExpense.value = true;
+}
+
 async function handleAddExpense() {
   if (!newExpenseTitle.value || newExpenseAmount.value === null || !newExpensePaidBy.value) return;
   try {
@@ -353,8 +362,7 @@ async function handleToggleShare() {
   const trip = tripStore.currentTrip;
   if (!trip) return;
   const newVis = trip.visibility === "shared" ? "private" : "shared";
-  const { tripApi } = await import("../api/client");
-  await tripApi.update(tripId, { visibility: newVis });
+  await api.put(`/trips/${tripId}`, { visibility: newVis });
   trip.visibility = newVis as "shared" | "private";
 }
 
@@ -639,11 +647,14 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <ErrorState v-else-if="tripStore.currentTrip === null &amp;&amp; !tripStore.loading &amp;&amp; tripStore.days.length === 0" />
+    <ErrorState v-else-if="tripStore.currentTrip === null && !tripStore.loading && tripStore.days.length === 0" />
 
     <!-- Content -->
     <div v-else class="mx-auto max-w-6xl px-4 py-6 pb-20 md:pb-0">
-      <!-- ========== ITINERARY TAB (Timeline) ========== -->
+      <!-- ========== ITINERARY TAB (Timeline) ========== -->      <!-- ========== ITINERARY TAB (Timeline) ========== -->
+      <div v-if="activeTab === 'itinerary'" class="flex flex-col lg:flex-row gap-6">
+        <!-- Left: Itinerary -->
+        <div class="flex-1 min-w-0">
       <div v-if="activeTab === 'itinerary'">
         <VueDraggable v-model="tripStore.days" ghost-class="opacity-30" @end="() => tripStore.reorderDays(tripStore.days.map(d => d.id))">
           <div
@@ -721,14 +732,38 @@ onUnmounted(() => {
           </div>
         </VueDraggable>
 
-        <!-- Add day button -->
+        <!-- Add day button -->        <!-- Add day button -->
         <button
           @click="showNewDay = true"
           class="mt-2 w-full rounded-xl border-2 border-dashed border-gray-300 py-4 text-sm text-gray-400 hover:border-indigo-400 hover:text-indigo-500 transition"
         >
           ＋ 新增天數
         </button>
+        </div>
+        <!-- End left: Itinerary -->
+
+        <!-- Right: Map (desktop only, shown inline with itinerary) -->
+        <div class="hidden lg:block lg:w-[420px] xl:w-[500px] flex-shrink-0">
+          <div class="sticky top-4 h-[calc(100vh-12rem)] rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+            <LMap :zoom="mapZoom" :center="mapCenter" style="height: 100%; width: 100%">
+              <LTileLayer
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                attribution="© OpenStreetMap contributors"
+              />
+              <LMarker v-for="(m, i) in mapMarkers" :key="i" :lat-lng="[m.lat, m.lng]">
+                <LPopup>
+                  <div class="text-sm">
+                    <p class="font-bold">{{ m.activity.title }}</p>
+                    <p class="text-xs text-gray-500">{{ m.day.date }} · {{ CATEGORY_LABELS[m.activity.category] }}</p>
+                  </div>
+                </LPopup>
+              </LMarker>
+              <LPolyline v-if="routeData" :lat-lngs="routeData.coordinates.map(c => [c[1], c[0]])" color="#4f46e5" :weight="4" />
+            </LMap>
+          </div>
+        </div>
       </div>
+      <!-- End itinerary tab -->      </div>
 
       <!-- ========== MAP TAB ========== -->
       <div v-if="activeTab === 'map'" class="h-[70vh] rounded-xl overflow-hidden border border-gray-200">
@@ -755,7 +790,7 @@ onUnmounted(() => {
         <div class="mb-4 flex items-center justify-between">
           <h2 class="text-lg font-bold text-gray-900">預算明細</h2>
           <button
-            @click="showAddExpense = true"
+            @click="openAddExpense()"
             class="rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white hover:bg-indigo-700"
           >
             ＋ 開銷
