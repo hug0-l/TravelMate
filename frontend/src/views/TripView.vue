@@ -14,7 +14,7 @@ import {
   type GeocodeResult,
   type Day,
 } from "../types";
-import { LMap, LTileLayer, LMarker, LPopup } from "@vue-leaflet/vue-leaflet";
+import { LMap, LTileLayer, LMarker, LPopup, LPolyline } from "@vue-leaflet/vue-leaflet";
 import L from "leaflet";
 
 // Fix Leaflet default marker icon path issue with bundlers
@@ -29,6 +29,10 @@ import SkeletonLoader from "../components/SkeletonLoader.vue";
 import EmptyState from "../components/EmptyState.vue";
 import ErrorState from "../components/ErrorState.vue";
 import { VueDraggable } from 'vue-draggable-plus';
+import POIManager from "../components/POIManager.vue";
+import RoutePlanner from "../components/RoutePlanner.vue";
+import { poiApi } from "../api/client";
+import type { POI } from "../types";
 const route = useRoute();
 const router = useRouter();
 const tripStore = useTripStore();
@@ -37,7 +41,23 @@ const auth = useAuthStore();
 let tripId = route.params.id as string;
 
 // Tabs
-const activeTab = ref<"itinerary" | "map" | "budget" | "memories">("itinerary");
+const activeTab = ref<"itinerary" | "map" | "budget" | "memories" | "poi">("itinerary");
+// POI state
+const pois = ref<POI[]>([]);
+const routeData = ref<{ coordinates: [number, number][]; distance: number; duration: number } | null>(null);
+
+async function fetchPois() {
+  try {
+    const res = await poiApi.list(tripId);
+    pois.value = res.data;
+  } catch {
+    pois.value = [];
+  }
+}
+
+function onRoute(data: { coordinates: [number, number][]; distance: number; duration: number } | null) {
+  routeData.value = data;
+}
 
 // WebSocket
 const socket = useTripSocket(tripId);
@@ -51,6 +71,7 @@ watch(() => route.params.id, (newId) => {
     fetchBudget();
     fetchExpenses();
     fetchMemories();
+    fetchPois();
   }
 });
 
@@ -410,6 +431,7 @@ onMounted(async () => {
   fetchBudget();
   fetchExpenses();
   fetchMemories();
+  fetchPois();
 });
 onUnmounted(() => {
   clearTimeout(geoTimeout);
@@ -509,6 +531,16 @@ onUnmounted(() => {
         >
           📝 回憶
           <span v-if="activeTab === 'memories'" class="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-indigo-500 to-purple-500"></span>
+        </button>
+        <button
+          @click="activeTab = 'poi'"
+          :class="[
+            'px-6 py-3 text-sm font-medium transition relative',
+            activeTab === 'poi' ? 'text-indigo-600' : 'text-gray-500 hover:text-gray-700',
+          ]"
+        >
+          📍 景點
+          <span v-if="activeTab === 'poi'" class="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-indigo-500 to-purple-500"></span>
         </button>
       </div>
     </div>
@@ -627,6 +659,7 @@ onUnmounted(() => {
               </div>
             </LPopup>
           </LMarker>
+          <LPolyline v-if="routeData" :lat-lngs="routeData.coordinates.map(c => [c[1], c[0]])" color="#4f46e5" :weight="4" />
         </LMap>
       </div>
 
@@ -774,6 +807,12 @@ onUnmounted(() => {
         </div>
       </div>
 
+      <!-- ========== POI TAB ========== -->
+      <div v-if="activeTab === 'poi'" class="space-y-6">
+        <POIManager :trip-id="tripId" />
+        <RoutePlanner :trip-id="tripId" :pois="pois" @route="onRoute" />
+      </div>
+
     </div>
 
 <!-- ========== ADD MEMORY MODAL ========== -->
@@ -799,6 +838,11 @@ onUnmounted(() => {
           :class="activeTab === 'memories' ? 'text-indigo-600' : 'text-gray-400'">
           <span class="text-lg">📝</span>
           <span>回憶</span>
+        </button>
+        <button @click="activeTab = 'poi'" class="flex-1 flex flex-col items-center py-2 text-xs"
+          :class="activeTab === 'poi' ? 'text-indigo-600' : 'text-gray-400'">
+          <span class="text-lg">📍</span>
+          <span>景點</span>
         </button>
       </div>
     </div>
