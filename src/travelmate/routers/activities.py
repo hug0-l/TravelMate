@@ -55,9 +55,13 @@ async def create_activity(
         title=body.title,
         notes=body.notes,
         start_time=body.start_time,
+        end_time=body.end_time,
         duration_minutes=body.duration_minutes,
+        transport_mode=body.transport_mode,
         category=body.category,
         location_id=body.location_id,
+        from_location_id=body.from_location_id,
+        to_location_id=body.to_location_id,
         order_index=order_index,
     )
     db.add(activity)

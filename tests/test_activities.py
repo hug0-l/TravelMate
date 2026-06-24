@@ -61,3 +61,30 @@ async def test_reorder_activities(client: AsyncClient, auth_headers: dict, day_i
     }, headers=auth_headers)
     data = resp.json()
     assert data[0]["id"] == a2["id"]
+
+
+@pytest.mark.asyncio
+async def test_create_activity_with_transport_mode(client: AsyncClient, auth_headers: dict, day_id: str):
+    resp = await client.post(f"/api/days/{day_id}/activities", json={
+        "title": "Go to Museum",
+        "category": "transport",
+        "transport_mode": "driving",
+    }, headers=auth_headers)
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["transport_mode"] == "driving"
+
+
+@pytest.mark.asyncio
+async def test_update_activity_transport_mode(client: AsyncClient, auth_headers: dict, day_id: str):
+    create = await client.post(f"/api/days/{day_id}/activities", json={
+        "title": "Commute",
+        "category": "transport",
+        "transport_mode": "driving",
+    }, headers=auth_headers)
+    act_id = create.json()["id"]
+    resp = await client.put(f"/api/activities/{act_id}", json={
+        "transport_mode": "walking",
+    }, headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["transport_mode"] == "walking"
