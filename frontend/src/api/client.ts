@@ -146,3 +146,20 @@ export const guestApi = {
   getJoinInfo: (tripId: string) =>
     api.get(`/trips/${tripId}/join-info`),
 };
+
+/* POIs */
+export const poiApi = {
+  list: (tripId: string) => api.get(`/trips/${tripId}/pois`),
+  create: (tripId: string, data: {
+    name: string;
+    address?: string;
+    lat?: number;
+    lng?: number;
+    place_id?: string;
+    notes?: string;
+    category?: string;
+  }) => api.post(`/trips/${tripId}/pois`, data),
+  update: (poiId: string, data: Record<string, unknown>) =>
+    api.put(`/pois/${poiId}`, data),
+  delete: (poiId: string) => api.delete(`/pois/${poiId}`),
+};
