@@ -18,6 +18,7 @@ const emit = defineEmits<{
 }>();
 
 const selectedPoiIds = ref<Set<string>>(new Set());
+const profile = ref<"driving" | "walking" | "cycling">("driving");
 const loading = ref(false);
 const routeData = ref<RouteData | null>(null);
 
@@ -49,7 +50,7 @@ async function planRoute() {
 
   try {
     const res = await fetch(
-      `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`
+      `https://router.project-osrm.org/route/v1/${profile.value}/${coords}?overview=full&geometries=geojson`
     );
     if (!res.ok) {
       throw new Error(`OSRM 回傳錯誤: ${res.status}`);
@@ -85,6 +86,21 @@ function clearRoute() {
     <div class="border-b border-gray-100 px-5 py-4">
       <h3 class="text-sm font-bold text-gray-900">📍 路線規劃</h3>
       <p class="mt-0.5 text-xs text-gray-400">勾選 2 個以上地點來規劃路線</p>
+    </div>
+
+    <!-- Profile Selector -->
+    <div class="flex gap-2 px-5 py-3 border-b border-gray-100">
+      <button
+        v-for="(label, key) in { driving: '🚗 開車', walking: '🚶 步行', cycling: '🚴 單車' }"
+        :key="key"
+        @click="profile = key as any"
+        :class="[
+          'rounded-lg px-3 py-1.5 text-xs font-medium transition',
+          profile === key ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200',
+        ]"
+      >
+        {{ label }}
+      </button>
     </div>
 
     <!-- POI Checkbox List -->

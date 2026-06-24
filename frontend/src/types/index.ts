@@ -102,6 +102,15 @@ export interface GeocodeResult {
   place_id: string;
 }
 
+export type TransportProfile = "driving" | "walking" | "cycling";
+
+export const TRANSPORT_PROFILE_LABELS: Record<TransportProfile, string> = {
+  driving: "🚗 開車",
+  walking: "🚶 步行",
+  cycling: "🚴 單車",
+};
+
+
 export const CATEGORY_LABELS: Record<ActivityCategory, string> = {
   transport: "🚆 交通",
   food: "🍜 美食",
