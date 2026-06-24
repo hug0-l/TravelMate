@@ -1,0 +1,13 @@
+{
+  "name": "TravelMate",
+  "short_name": "TravelMate",
+  "description": "旅遊規劃助手 — 行程編輯、地圖、預算管理",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f9fafb",
+  "theme_color": "#4f46e5",
+  "lang": "zh-Hant",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
