@@ -11,6 +11,13 @@ export interface PendingChange {
   retry_count: number;
 }
 
+export interface ConflictEntry {
+  change: PendingChange;
+  serverData: any;
+  localData: any;
+  resolved?: 'local' | 'server';
+}
+
 const DEFAULT_AUTO_FLUSH_INTERVAL = 30_000;
 const MAX_RETRIES = 3;
 
@@ -95,6 +102,35 @@ export class SyncQueue {
     for (const change of dead) {
       await this.db.delete("pending_changes", String(change.id));
     }
+  }
+
+  async checkConflicts(): Promise<ConflictEntry[]> {
+    const changes: PendingChange[] = await this.db.getAll("pending_changes");
+    const conflicts: ConflictEntry[] = [];
+
+    for (const change of changes) {
+      if (change.retry_count === 0) continue;
+
+      try {
+        const response = await fetch(change.endpoint, {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+        });
+
+        if (response.ok) {
+          const serverData = await response.json();
+          const localData = change.body;
+
+          if (JSON.stringify(serverData) !== JSON.stringify(localData)) {
+            conflicts.push({ change, serverData, localData });
+          }
+        }
+      } catch {
+        // Network error — can't fetch server version, skip
+      }
+    }
+
+    return conflicts;
   }
 
   startAutoFlush(intervalMs: number = DEFAULT_AUTO_FLUSH_INTERVAL): void {
