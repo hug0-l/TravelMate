@@ -381,6 +381,22 @@ const showAddMemory = ref(false);
 const newMemTitle = ref("");
 const newMemContent = ref("");
 const newMemDate = ref("");
+const newMemPhotos = ref<string[]>([]);
+
+async function handleFileSelect(e: Event) {
+  const files = (e.target as HTMLInputElement).files;
+  if (!files) return;
+  for (const file of Array.from(files)) {
+    if (newMemPhotos.value.length >= 9) break;
+    const url = URL.createObjectURL(file);
+    newMemPhotos.value.push(url);
+  }
+}
+
+function removePhoto(index: number) {
+  URL.revokeObjectURL(newMemPhotos.value[index]);
+  newMemPhotos.value.splice(index, 1);
+}
 
 async function fetchMemories() {
   memoriesLoading.value = true;
@@ -401,11 +417,14 @@ async function handleAddMemory() {
       title: newMemTitle.value,
       content: newMemContent.value || undefined,
       date: newMemDate.value,
+      photo_urls: newMemPhotos.value.length > 0 ? newMemPhotos.value : undefined,
     });
     showAddMemory.value = false;
     newMemTitle.value = "";
     newMemContent.value = "";
     newMemDate.value = "";
+    newMemPhotos.value.forEach(url => URL.revokeObjectURL(url));
+    newMemPhotos.value = [];
     await fetchMemories();
   } catch {
     // ignore
@@ -795,9 +814,7 @@ onUnmounted(() => {
                 <h3 class="text-base font-bold text-gray-900">{{ memory.title }}</h3>
                 <p v-if="memory.content" class="mt-1 text-sm text-gray-600 whitespace-pre-wrap">{{ memory.content }}</p>
                 <div v-if="memory.photo_urls && memory.photo_urls.length > 0" class="mt-3 flex gap-2 overflow-x-auto">
-                  <div v-for="(url, i) in memory.photo_urls" :key="i" class="h-20 w-20 flex-shrink-0 rounded-lg bg-gray-100 flex items-center justify-center text-2xl">
-                    🖼️
-                  </div>
+                  <img v-for="(url, i) in memory.photo_urls" :key="i" :src="url" class="h-20 w-20 flex-shrink-0 rounded-lg object-cover border border-gray-200" />
                 </div>
               </div>
               <button
@@ -859,6 +876,19 @@ onUnmounted(() => {
             <input v-model="newMemTitle" placeholder="標題" required class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
             <input v-model="newMemDate" type="date" required class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
             <textarea v-model="newMemContent" rows="3" placeholder="寫下你的回憶..." class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"></textarea>
+            <div class="space-y-2">
+              <div class="flex flex-wrap gap-2">
+                <div v-for="(photo, i) in newMemPhotos" :key="i" class="relative h-20 w-20 flex-shrink-0 rounded-lg overflow-hidden bg-gray-100">
+                  <img :src="photo" class="h-full w-full object-cover" />
+                  <button @click="removePhoto(i)" type="button" class="absolute top-0.5 right-0.5 h-5 w-5 rounded-full bg-black/50 text-white text-xs flex items-center justify-center">✕</button>
+                </div>
+                <label v-if="newMemPhotos.length < 9" class="flex h-20 w-20 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 hover:border-indigo-400">
+                  <span class="text-2xl text-gray-400">📷</span>
+                  <span class="text-xs text-gray-400">拍照/選取</span>
+                  <input type="file" accept="image/*" capture="environment" multiple class="hidden" @change="handleFileSelect" />
+                </label>
+              </div>
+            </div>
             <div class="flex justify-end gap-2 pt-2">
               <button type="button" @click="showAddMemory = false" class="rounded-lg px-4 py-2 text-sm text-gray-600 hover:bg-gray-100">取消</button>
               <button type="submit" class="rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white hover:bg-indigo-700">新增</button>
