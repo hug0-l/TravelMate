@@ -42,6 +42,6 @@ class Activity(Base, TimestampMixin):
 
     # relationships
     day = relationship("Day", back_populates="activities")
-    location = relationship("Location", back_populates="activities", lazy="selectin")
+    location = relationship("Location", foreign_keys=[location_id], back_populates="activities", lazy="selectin")
     from_location = relationship("Location", foreign_keys=[from_location_id], lazy="selectin")
     to_location = relationship("Location", foreign_keys=[to_location_id], lazy="selectin")

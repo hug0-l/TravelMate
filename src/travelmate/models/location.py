@@ -15,4 +15,4 @@ class Location(Base, TimestampMixin):
     place_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # relationships
-    activities = relationship("Activity", back_populates="location", lazy="selectin")
+    activities = relationship("Activity", foreign_keys="Activity.location_id", back_populates="location", lazy="selectin")
