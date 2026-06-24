@@ -33,6 +33,7 @@ import POIManager from "../components/POIManager.vue";
 import RoutePlanner from "../components/RoutePlanner.vue";
 import { poiApi } from "../api/client";
 import type { POI } from "../types";
+import OfflineBanner from "../components/OfflineBanner.vue";
 const route = useRoute();
 const router = useRouter();
 const tripStore = useTripStore();
@@ -440,6 +441,7 @@ onUnmounted(() => {
 </script>
 
 <template>
+    <OfflineBanner />
   <div class="min-h-screen bg-gray-50">
     <!-- Hero Banner -->
     <header class="bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 text-white shadow-lg">
@@ -484,6 +486,9 @@ onUnmounted(() => {
           </span>
           <span v-if="tripStore.currentTrip?.destination_tz_offset !== null" class="inline-flex items-center gap-1 rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-medium text-white/90">
             🕐 UTC{{ (tripStore.currentTrip?.destination_tz_offset ?? 0) >= 0 ? '+' : '' }}{{ tripStore.currentTrip?.destination_tz_offset }}
+          </span>
+          <span v-if="!navigator.onLine" class="inline-flex items-center gap-1 rounded-full bg-amber-500/20 px-2 py-0.5 text-xs text-amber-200">
+            ⚠️ 離線
           </span>
         </div>
       </div>

@@ -4,6 +4,7 @@ import { useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 import { useTripStore } from "../stores/trip";
 import api from "../api/client";
+import OfflineBanner from "../components/OfflineBanner.vue";
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -109,6 +110,8 @@ onMounted(() => {
         </div>
       </div>
     </header>
+
+    <OfflineBanner />
 
     <main class="mx-auto max-w-5xl px-4 py-8">
       <!-- Header -->
