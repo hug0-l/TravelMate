@@ -60,6 +60,54 @@ function onRoute(data: { coordinates: [number, number][]; distance: number; dura
   routeData.value = data;
 }
 
+// Pull-to-refresh
+const pullDistance = ref(0);
+const isRefreshing = ref(false);
+const pullThreshold = 80;
+
+let startY = 0;
+let isPulling = false;
+
+function onTouchStart(e: TouchEvent) {
+  if (window.scrollY > 0) return;
+  startY = e.touches[0].clientY;
+  isPulling = true;
+}
+
+function onTouchMove(e: TouchEvent) {
+  if (!isPulling || isRefreshing.value) return;
+  const diff = e.touches[0].clientY - startY;
+  if (diff > 0) {
+    pullDistance.value = Math.min(diff * 0.5, 120);
+  }
+}
+
+function onTouchEnd() {
+  isPulling = false;
+  if (pullDistance.value >= pullThreshold) {
+    isRefreshing.value = true;
+    pullDistance.value = 0;
+    refreshData().finally(() => {
+      isRefreshing.value = false;
+    });
+  } else {
+    pullDistance.value = 0;
+  }
+}
+
+async function refreshData() {
+  try {
+    await tripStore.fetchTrip(tripId);
+  } catch {
+    // error handled by ErrorState
+  }
+  fetchMembers();
+  fetchBudget();
+  fetchExpenses();
+  fetchMemories();
+  fetchPois();
+}
+
 // WebSocket
 const socket = useTripSocket(tripId);
 watch(() => route.params.id, (newId) => {
@@ -461,7 +509,21 @@ onUnmounted(() => {
 
 <template>
     <OfflineBanner />
-  <div class="min-h-screen bg-gray-50">
+  <div class="min-h-screen bg-gray-50" @touchstart="onTouchStart" @touchmove="onTouchMove" @touchend="onTouchEnd">
+    <!-- Pull-to-refresh indicator -->
+    <div
+      v-if="pullDistance > 0 || isRefreshing"
+      class="flex items-center justify-center py-2 text-sm text-gray-500 transition-all"
+      :style="{ transform: `translateY(${isRefreshing ? 0 : pullDistance}px)` }"
+    >
+      <span
+        class="inline-block text-lg transition-transform duration-300"
+        :class="pullDistance >= pullThreshold ? 'rotate-180' : ''"
+      >↓</span>
+      <span class="ml-2">
+        {{ isRefreshing ? '載入中...' : pullDistance >= pullThreshold ? '釋放重新整理' : '下拉重新整理' }}
+      </span>
+    </div>
     <!-- Hero Banner -->
     <header class="bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 text-white shadow-lg">
       <div class="mx-auto max-w-6xl px-3 md:px-4 py-3 md:py-4">
