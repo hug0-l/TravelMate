@@ -44,6 +44,8 @@ TravelMate/
 │           └── GuestJoinView.vue
 ├── tests/                      # Pytest 測試 (35+ 個)
 ├── alembic/                    # DB 遷移
+├── README.md                   # 專案說明文件
+├── .gitignore                  # Git 忽略規則
 └── .env.example
 ```
 

@@ -42,14 +42,32 @@ const router = createRouter({
       component: () => import("../views/AdminView.vue"),
       meta: { requiresAuth: true },
     },
+    {
+      path: "/:pathMatch(.*)*",
+      name: "NotFound",
+      component: () => import("../views/NotFoundView.vue"),
+    },
   ],
 });
 
 router.beforeEach((to, _from) => {
   const auth = useAuthStore();
-  if (to.meta.requiresAuth && !auth.isLoggedIn) {
+  const guestToken = localStorage.getItem("guest_token");
+  if (to.meta.requiresAuth && !auth.isLoggedIn && !guestToken) {
     return "/login";
   }
+});
+router.afterEach((to) => {
+  const titles: Record<string, string> = {
+    Dashboard: "我的旅程 - TravelMate",
+    TripDetail: "行程 - TravelMate",
+    Login: "登入 - TravelMate",
+    Register: "註冊 - TravelMate",
+    Admin: "管理後台 - TravelMate",
+    GuestJoin: "加入行程 - TravelMate",
+    SharedTrip: "分享行程 - TravelMate",
+  };
+  document.title = titles[to.name as string] || "TravelMate";
 });
 
 export default router;

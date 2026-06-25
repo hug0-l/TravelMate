@@ -1,14 +1,35 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 import { useTripStore } from "../stores/trip";
+import { trimmed } from "../utils/trim";
 import api from "../api/client";
-import OfflineBanner from "../components/OfflineBanner.vue";
+import ConfirmModal from "../components/ConfirmModal.vue";
+import SkeletonLoader from "../components/SkeletonLoader.vue";
+import { usePullToRefresh } from "../hooks/usePullToRefresh";
 
 const router = useRouter();
 const auth = useAuthStore();
 const tripStore = useTripStore();
+
+const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
+const { pullDistance, isRefreshing, pullThreshold, onTouchStart, onTouchMove, onTouchEnd } = usePullToRefresh(async () => {
+  await tripStore.fetchTrips();
+});
+
+const searchQuery = ref("");
+
+const filteredTrips = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase();
+  if (!q) return tripStore.trips;
+  return tripStore.trips.filter(trip =>
+    trip.title.toLowerCase().includes(q) ||
+    (trip.destination_country && trip.destination_country.toLowerCase().includes(q)) ||
+    (trip.description && trip.description.toLowerCase().includes(q))
+  );
+});
 
 const showCreate = ref(false);
 const newTitle = ref("");
@@ -19,6 +40,12 @@ const newOrigin = ref("");
 const newDest = ref("");
 const newTzOffset = ref(0);
 const useDuration = ref(true);
+const showDeleteConfirm = ref(false);
+const deletingTripId = ref("");
+const showCopyModal = ref(false);
+const copyTripId = ref("");
+const copyTitle = ref("");
+const copyStart = ref("");
 
 const countryTimezoneMap: Record<string, number> = {
   "日本": 9, "韓國": 9, "台灣": 8, "中國": 8, "香港": 8,
@@ -62,49 +89,36 @@ function closeModal() {
   showCreate.value = false;
 }
 
-// Pull-to-refresh
-const pullDistance = ref(0);
-const isRefreshing = ref(false);
-const pullThreshold = 80;
-
-let startY = 0;
-let isPulling = false;
-
-function onTouchStart(e: TouchEvent) {
-  if (window.scrollY > 0) return;
-  startY = e.touches[0].clientY;
-  isPulling = true;
-}
-
-function onTouchMove(e: TouchEvent) {
-  if (!isPulling || isRefreshing.value) return;
-  const diff = e.touches[0].clientY - startY;
-  if (diff > 0) {
-    pullDistance.value = Math.min(diff * 0.5, 120);
-  }
-}
-
-function onTouchEnd() {
-  isPulling = false;
-  if (pullDistance.value >= pullThreshold) {
-    isRefreshing.value = true;
-    pullDistance.value = 0;
-    refreshData().finally(() => {
-      isRefreshing.value = false;
-    });
-  } else {
-    pullDistance.value = 0;
-  }
-}
-
-async function refreshData() {
-  await tripStore.fetchTrips();
-}
-
 async function handleDeleteTrip(tripId: string) {
-  if (!confirm("確定刪除此行程？")) return;
   try {
     await tripStore.deleteTrip(tripId);
+  } catch {
+    showDeleteConfirm.value = false;
+  }
+}
+
+function openCopyTrip(trip: any) {
+  copyTripId.value = trip.id;
+  copyTitle.value = trip.title + " (複製)";
+  copyStart.value = "";
+  showCopyModal.value = true;
+}
+
+async function handleCopyTrip() {
+  if (!copyTitle.value || !copyStart.value) return;
+  const original = tripStore.trips.find((t) => t.id === copyTripId.value);
+  try {
+    await tripStore.createTrip({
+      title: copyTitle.value,
+      start_date: copyStart.value,
+      duration_days: original
+        ? Math.max(1, Math.round((new Date(original.end_date).getTime() - new Date(original.start_date).getTime()) / 86400000) + 1)
+        : undefined,
+      origin_country: original?.origin_country ?? undefined,
+      destination_country: original?.destination_country ?? undefined,
+      destination_tz_offset: original?.destination_tz_offset ?? undefined,
+    });
+    showCopyModal.value = false;
   } catch {
     // ignore
   }
@@ -113,12 +127,12 @@ async function handleDeleteTrip(tripId: string) {
 async function handleCreate() {
   try {
     await tripStore.createTrip({
-      title: newTitle.value,
+      title: trimmed(newTitle.value),
       start_date: newStart.value,
       duration_days: useDuration.value ? newDuration.value : undefined,
       end_date: useDuration.value ? undefined : newEnd.value,
-      origin_country: newOrigin.value || undefined,
-      destination_country: newDest.value || undefined,
+      origin_country: trimmedOrUndefined(newOrigin.value),
+      destination_country: trimmedOrUndefined(newDest.value),
       destination_tz_offset: newDest.value ? newTzOffset.value : undefined,
     });
     resetForm();
@@ -127,13 +141,18 @@ async function handleCreate() {
   }
 }
 
+function trimmedOrUndefined(val: string): string | undefined {
+  const t = val.trim();
+  return t || undefined;
+}
+
 onMounted(() => {
   tripStore.fetchTrips();
 });
 </script>
 
 <template>
-  <div class="min-h-screen" @touchstart="onTouchStart" @touchmove="onTouchMove" @touchend="onTouchEnd">
+  <div class="min-h-screen" @touchstart.passive="isTouchDevice ? onTouchStart : undefined" @touchmove.passive="isTouchDevice ? onTouchMove : undefined" @touchend.passive="isTouchDevice ? onTouchEnd : undefined">
     <!-- Pull-to-refresh indicator -->
     <div
       v-if="pullDistance > 0 || isRefreshing"
@@ -164,11 +183,9 @@ onMounted(() => {
       </div>
     </header>
 
-    <OfflineBanner />
-
     <main class="mx-auto max-w-5xl px-4 py-8">
       <!-- Header -->
-      <div class="mb-6 flex items-center justify-between">
+      <div class="mb-4 flex items-center justify-between">
         <h2 class="text-3xl font-extrabold text-gray-900 tracking-tight">
           <span class="bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">我的旅程</span>
         </h2>
@@ -178,6 +195,16 @@ onMounted(() => {
         >
           ＋ 新行程
         </button>
+      </div>
+
+      <!-- Search -->
+      <div class="mb-6">
+        <input
+          v-model="searchQuery"
+          type="text"
+          placeholder="🔍 搜尋行程名稱、國家..."
+          class="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm shadow-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition"
+        />
       </div>
 
       <!-- Create Modal -->
@@ -265,7 +292,6 @@ onMounted(() => {
                 <label class="block text-xs text-gray-500">目的地國家</label>
                 <input
                   v-model="newDest"
-                  list="countries"
                   placeholder="日本"
                   @input="onDestChange(newDest)"
                   class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
@@ -285,7 +311,7 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- Loading -->      <!-- Country datalist -->
+      <!-- Country datalist -->
       <datalist id="countries">
         <option value="日本" /><option value="韓國" /><option value="台灣" /><option value="中國" /><option value="香港" />
         <option value="新加坡" /><option value="泰國" /><option value="越南" /><option value="印尼" /><option value="馬來西亞" />
@@ -297,8 +323,15 @@ onMounted(() => {
         <option value="澳洲" /><option value="紐西蘭" /><option value="埃及" /><option value="摩洛哥" /><option value="南非" />
       </datalist>
 
+      <!-- Loading Skeleton -->
+      <div v-if="tripStore.loading && tripStore.trips.length === 0" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div v-for="i in 6" :key="i">
+          <SkeletonLoader hasImage :lines="3" />
+        </div>
+      </div>
 
-      <div v-if="tripStore.trips.length === 0" class="flex items-center justify-center py-16">
+      <!-- Empty State -->
+      <div v-if="!tripStore.loading && tripStore.trips.length === 0" class="flex items-center justify-center py-16">
         <div class="w-full max-w-md rounded-2xl border border-dashed border-gray-200 bg-white/50 px-8 py-12 text-center shadow-sm">
           <div class="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-indigo-50 text-5xl">🗺️</div>
           <h3 class="mb-2 text-xl font-bold text-gray-800">開始你的旅程</h3>
@@ -313,14 +346,38 @@ onMounted(() => {
       </div>
 
       <!-- Trip Cards -->
-      <div v-else class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div v-if="!tripStore.loading && tripStore.trips.length > 0" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div v-if="searchQuery.trim() && filteredTrips.length === 0" class="col-span-full py-16 text-center text-gray-400">
+          <p class="text-3xl mb-2">🔍</p>
+          <p class="text-sm">沒有符合「{{ searchQuery }}」的行程</p>
+        </div>
         <div
-          v-for="trip in tripStore.trips"
+          v-for="trip in filteredTrips"
           :key="trip.id"
           @click="router.push(`/trips/${trip.id}`)"
-          class="cursor-pointer rounded-xl border border-gray-200 bg-white p-5 shadow-sm hover:shadow-md transition"
+          class="group cursor-pointer rounded-xl border border-gray-200 bg-white p-5 shadow-sm hover:shadow-md transition"
         >
-          <h3 class="text-lg font-bold text-gray-900">{{ trip.title }}</h3>
+          <div class="flex items-start justify-between">
+            <h3 class="text-lg font-bold text-gray-900">{{ trip.title }}</h3>
+            <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition flex-shrink-0 ml-2">
+              <button
+                @click.stop="openCopyTrip(trip)"
+                class="text-gray-300 hover:text-indigo-500 text-xs"
+                title="複製行程"
+                aria-label="複製行程"
+              >
+                📋
+              </button>
+              <button
+                @click.stop="() => { deletingTripId = trip.id; showDeleteConfirm = true }"
+                class="text-gray-300 hover:text-red-500 text-xs"
+                title="刪除行程"
+                aria-label="刪除行程"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
           <p v-if="trip.description" class="mt-1 text-sm text-gray-500 line-clamp-2">{{ trip.description }}</p>
           <div class="mt-3 flex items-center gap-2 text-xs text-gray-400">
             <span>📅 {{ trip.start_date }} ~ {{ trip.end_date }}</span>
@@ -334,6 +391,32 @@ onMounted(() => {
             </span>
             <span v-if="trip.visibility === 'shared'" class="rounded bg-green-100 px-1.5 py-0.5 text-green-700">🔗 分享中</span>
           </div>
+        </div>
+      </div>
+      <!-- Confirm Delete Modal -->
+      <ConfirmModal
+        :show="showDeleteConfirm"
+        title="刪除行程"
+        message="確定要刪除此行程？此操作無法復原。"
+        confirm-text="刪除"
+        cancel-text="取消"
+        variant="danger"
+        @confirm="handleDeleteTrip(deletingTripId)"
+        @cancel="showDeleteConfirm = false"
+      />
+
+      <!-- Copy Trip Modal -->
+      <div v-if="showCopyModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40" @click.self="showCopyModal = false">
+        <div class="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
+          <h3 class="mb-4 text-lg font-bold">📋 複製行程</h3>
+          <form @submit.prevent="handleCopyTrip" class="space-y-3">
+            <input v-model="copyTitle" placeholder="新行程名稱" required class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            <input v-model="copyStart" type="date" required class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            <div class="flex justify-end gap-2 pt-2">
+              <button type="button" @click="showCopyModal = false" class="rounded-lg px-4 py-2 text-sm text-gray-600 hover:bg-gray-100">取消</button>
+              <button type="submit" class="rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white hover:bg-indigo-700">複製</button>
+            </div>
+          </form>
         </div>
       </div>
     </main>

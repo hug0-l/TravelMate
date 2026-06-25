@@ -1,10 +1,14 @@
 """Alembic environment configuration — async SQLite."""
 
 import asyncio
+import sys
+from pathlib import Path
 from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy.ext.asyncio import create_async_engine
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.travelmate.config import settings
 from src.travelmate.models import Base

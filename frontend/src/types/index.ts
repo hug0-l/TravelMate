@@ -12,10 +12,12 @@ export interface Trip {
   end_date: string;
   cover_url: string | null;
   share_code: string;
+  join_code?: string;
   visibility: "private" | "shared" | "public";
   origin_country: string | null;
   destination_country: string | null;
   destination_tz_offset: number | null;
+  days?: Day[];
   created_at: string | null;
   updated_at: string | null;
 }
@@ -26,6 +28,7 @@ export interface Day {
   date: string;
   title: string | null;
   order_index: number;
+  activities?: Activity[];
   created_at: string | null;
   updated_at: string | null;
 }
@@ -100,6 +103,47 @@ export interface GeocodeResult {
   lat: number;
   lng: number;
   place_id: string;
+}
+
+export interface PackingItem {
+  id: string;
+  trip_id: string;
+  user_id: string;
+  name: string;
+  category: string;
+  checked: boolean;
+  quantity: number;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface ActivityComment {
+  id: string;
+  activity_id: string;
+  user_id: string;
+  user_name: string;
+  content: string;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface PollOption {
+  id: string;
+  label: string;
+  vote_count: number;
+  voted: boolean;
+}
+
+export interface Poll {
+  id: string;
+  trip_id: string;
+  creator_id: string;
+  creator_name: string;
+  question: string;
+  is_closed: boolean;
+  options: PollOption[];
+  total_votes: number;
+  created_at: string | null;
 }
 
 export type TransportProfile = "driving" | "walking" | "cycling";

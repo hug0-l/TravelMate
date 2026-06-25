@@ -199,7 +199,7 @@ export const useTripStore = defineStore("trip", () => {
     delete activities.value[dayId];
   }
 
-  async function createActivity(dayId: string, data: { title: string; notes?: string; start_time?: string; end_time?: string; duration_minutes?: number; category?: string; location_id?: string; transport_mode?: string }) {
+  async function createActivity(dayId: string, data: { title: string; notes?: string; start_time?: string; end_time?: string; duration_minutes?: number; category?: string; location_id?: string; transport_mode?: string; assignee_id?: string }) {
     if (navigator.onLine) {
       let res;
       try {
@@ -225,7 +225,7 @@ export const useTripStore = defineStore("trip", () => {
     return offlineAct;
   }
 
-  async function updateActivity(activityId: string, data: { title?: string; notes?: string; start_time?: string; end_time?: string; duration_minutes?: number; category?: string; location_id?: string; transport_mode?: string }) {
+  async function updateActivity(activityId: string, data: { title?: string; notes?: string; start_time?: string; end_time?: string; duration_minutes?: number; category?: string; location_id?: string; transport_mode?: string; assignee_id?: string }) {
     if (navigator.onLine) {
       const res = await activityApi.update(activityId, data);
       for (const dayId in activities.value) {

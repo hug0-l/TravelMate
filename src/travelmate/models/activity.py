@@ -39,9 +39,13 @@ class Activity(Base, TimestampMixin):
         default=ActivityCategory.OTHER,
     )
     order_index: Mapped[int] = mapped_column(Integer, default=0)
+    assignee_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
 
     # relationships
     day = relationship("Day", back_populates="activities")
     location = relationship("Location", foreign_keys=[location_id], back_populates="activities", lazy="selectin")
     from_location = relationship("Location", foreign_keys=[from_location_id], lazy="selectin")
     to_location = relationship("Location", foreign_keys=[to_location_id], lazy="selectin")
+    assignee = relationship("User", back_populates="assigned_activities", foreign_keys=[assignee_id])
+    comments = relationship("ActivityComment", back_populates="activity", lazy="selectin")

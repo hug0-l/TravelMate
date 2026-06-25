@@ -10,6 +10,7 @@ from src.travelmate.models.day import Day
 from src.travelmate.models.trip import Trip, TripMember
 from src.travelmate.models.user import User
 from src.travelmate.schemas.activity import ActivityCreate, ActivityReorder, ActivityResponse, ActivityUpdate
+from src.travelmate.utils import sanitize, sanitize_dict
 
 router = APIRouter(tags=["activities"])
 
@@ -32,11 +33,14 @@ async def list_activities(day_id: str, user: User = Depends(get_current_user), d
     await _verify_trip_access_via_day(day_id, user, db)
     result = await db.execute(
         select(Activity)
-        .options(selectinload(Activity.location))
+        .options(selectinload(Activity.location), selectinload(Activity.assignee))
         .where(Activity.day_id == day_id)
         .order_by(Activity.order_index)
     )
-    return result.scalars().all()
+    activities = result.scalars().all()
+    for activity in activities:
+        activity.assignee_name = activity.assignee.name if activity.assignee else None
+    return activities
 
 
 @router.post("/api/days/{day_id}/activities", response_model=ActivityResponse, status_code=status.HTTP_201_CREATED)
@@ -52,8 +56,8 @@ async def create_activity(
     order_index = (last.order_index + 1) if last else 0
     activity = Activity(
         day_id=day_id,
-        title=body.title,
-        notes=body.notes,
+        title=sanitize(body.title) or body.title,
+        notes=sanitize(body.notes),
         start_time=body.start_time,
         end_time=body.end_time,
         duration_minutes=body.duration_minutes,
@@ -62,18 +66,21 @@ async def create_activity(
         location_id=body.location_id,
         from_location_id=body.from_location_id,
         to_location_id=body.to_location_id,
+        assignee_id=body.assignee_id,
         order_index=order_index,
     )
     db.add(activity)
     await db.commit()
     await db.refresh(activity)
-    # Re-fetch with location loaded for response
+    # Re-fetch with location and assignee loaded for response
     result = await db.execute(
         select(Activity)
-        .options(selectinload(Activity.location))
+        .options(selectinload(Activity.location), selectinload(Activity.assignee))
         .where(Activity.id == activity.id)
     )
-    return result.scalar_one()
+    activity = result.scalar_one()
+    activity.assignee_name = activity.assignee.name if activity.assignee else None
+    return activity
 
 
 @router.put("/api/activities/{activity_id}", response_model=ActivityResponse)
@@ -82,24 +89,28 @@ async def update_activity(
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(Activity).options(selectinload(Activity.location)).where(Activity.id == activity_id)
+        select(Activity)
+        .options(selectinload(Activity.location), selectinload(Activity.assignee))
+        .where(Activity.id == activity_id)
     )
     activity = result.scalar_one_or_none()
     if not activity:
         raise HTTPException(status_code=404, detail="Activity not found")
     await _verify_trip_access_via_day(activity.day_id, user, db)
-    update_data = body.model_dump(exclude_unset=True)
+    update_data = sanitize_dict(body.model_dump(exclude_unset=True), ["title", "notes"])
     for field, value in update_data.items():
         setattr(activity, field, value)
     await db.commit()
     await db.refresh(activity)
-    # Re-fetch with location loaded for response
+    # Re-fetch with location and assignee loaded for response
     result = await db.execute(
         select(Activity)
-        .options(selectinload(Activity.location))
+        .options(selectinload(Activity.location), selectinload(Activity.assignee))
         .where(Activity.id == activity.id)
     )
-    return result.scalar_one()
+    activity = result.scalar_one()
+    activity.assignee_name = activity.assignee.name if activity.assignee else None
+    return activity
 
 
 @router.delete("/api/activities/{activity_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -127,8 +138,11 @@ async def reorder_activities(
     await db.commit()
     result = await db.execute(
         select(Activity)
-        .options(selectinload(Activity.location))
+        .options(selectinload(Activity.location), selectinload(Activity.assignee))
         .where(Activity.day_id == day_id)
         .order_by(Activity.order_index)
     )
-    return result.scalars().all()
+    activities = result.scalars().all()
+    for activity in activities:
+        activity.assignee_name = activity.assignee.name if activity.assignee else None
+    return activities

@@ -59,3 +59,15 @@ class BudgetSummary(BaseModel):
     by_category: dict[str, float] = {}
     per_person: dict[str, float] = {}
     balances: list[dict] = []  # [{user_id, name, paid, share, balance}]
+
+class SettleUpTransaction(BaseModel):
+    from_user_id: str
+    from_user_name: str
+    to_user_id: str
+    to_user_name: str
+    amount: float
+
+
+class SettleUpResponse(BaseModel):
+    transactions: list[SettleUpTransaction]
+    total_balance: dict[str, float]  # user_id -> net balance

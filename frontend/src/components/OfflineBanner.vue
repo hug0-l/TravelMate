@@ -91,7 +91,7 @@ onUnmounted(() => {
     <div
       v-if="isVisible"
       :class="bannerClass"
-      class="fixed left-0 right-0 top-0 z-40 flex items-center justify-center gap-2 border-b px-4 py-2.5 text-sm font-medium shadow-sm"
+      class="relative left-0 right-0 top-0 z-30 flex items-center justify-center gap-2 border-b px-4 py-2.5 text-sm font-medium shadow-sm"
     >
       <span>{{ iconText }}</span>
       <span>{{ messageText }}</span>

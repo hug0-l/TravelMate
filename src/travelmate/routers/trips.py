@@ -10,6 +10,7 @@ from src.travelmate.models.day import Day
 from src.travelmate.models.trip import Trip, TripMember
 from src.travelmate.models.user import User
 from src.travelmate.schemas.trip import TripCreate, TripResponse, TripUpdate
+from src.travelmate.utils import sanitize, sanitize_dict
 
 router = APIRouter(prefix="/api/trips", tags=["trips"])
 
@@ -27,9 +28,16 @@ async def _get_user_trip(trip_id: str, user: User, db: AsyncSession) -> Trip:
 
 
 @router.get("/", response_model=list[TripResponse])
-async def list_trips(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def list_trips(
+    skip: int = 0,
+    limit: int = 50,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     result = await db.execute(
-        select(Trip).join(TripMember).where(TripMember.user_id == user.id).order_by(Trip.created_at.desc())
+        select(Trip).join(TripMember).where(TripMember.user_id == user.id)
+        .order_by(Trip.created_at.desc())
+        .offset(skip).limit(limit)
     )
     return result.scalars().all()
 
@@ -42,13 +50,13 @@ async def create_trip(body: TripCreate, user: User = Depends(get_current_user), 
         end_date = body.start_date + timedelta(days=body.duration_days - 1)
 
     trip = Trip(
-        title=body.title,
-        description=body.description,
+        title=sanitize(body.title) or body.title,
+        description=sanitize(body.description),
         start_date=body.start_date,
         end_date=end_date,
         visibility=body.visibility,
-        origin_country=body.origin_country,
-        destination_country=body.destination_country,
+        origin_country=sanitize(body.origin_country),
+        destination_country=sanitize(body.destination_country),
         destination_tz_offset=body.destination_tz_offset,
     )
     db.add(trip)
@@ -85,7 +93,7 @@ async def update_trip(
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db),
 ):
     trip = await _get_user_trip(trip_id, user, db)
-    update_data = body.model_dump(exclude_unset=True)
+    update_data = sanitize_dict(body.model_dump(exclude_unset=True), ["title", "description", "origin_country", "destination_country"])
     for field, value in update_data.items():
         setattr(trip, field, value)
     await db.commit()

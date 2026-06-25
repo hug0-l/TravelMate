@@ -25,6 +25,7 @@ class ActivityCreate(BaseModel):
     location_id: Optional[str] = None
     from_location_id: Optional[str] = None
     to_location_id: Optional[str] = None
+    assignee_id: Optional[str] = None
 
 
 class ActivityUpdate(BaseModel):
@@ -38,6 +39,7 @@ class ActivityUpdate(BaseModel):
     location_id: Optional[str] = None
     from_location_id: Optional[str] = None
     to_location_id: Optional[str] = None
+    assignee_id: Optional[str] = None
 
 
 class ActivityResponse(BaseModel):
@@ -59,6 +61,8 @@ class ActivityResponse(BaseModel):
     created_at: datetime | None = None
     updated_at: datetime | None = None
     location: LocationBrief | None = None
+    assignee_id: str | None = None
+    assignee_name: str | None = None
 
 
 class ActivityReorder(BaseModel):

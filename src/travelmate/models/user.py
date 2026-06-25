@@ -18,3 +18,8 @@ class User(Base, TimestampMixin):
     paid_expenses = relationship("Expense", back_populates="payer", lazy="selectin")
     splits = relationship("Split", back_populates="user", lazy="selectin")
     memories = relationship("Memory", back_populates="user", lazy="selectin")
+    assigned_activities = relationship("Activity", back_populates="assignee", foreign_keys="Activity.assignee_id")
+    activity_comments = relationship("ActivityComment", back_populates="user", lazy="selectin")
+    packing_items = relationship("PackingItem", back_populates="user", lazy="selectin")
+    created_polls = relationship("Poll", back_populates="creator", lazy="selectin")
+    poll_votes = relationship("PollVote", back_populates="user", lazy="selectin")

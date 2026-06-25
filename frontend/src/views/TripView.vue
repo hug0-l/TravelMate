@@ -5,6 +5,7 @@ import { useTripStore } from "../stores/trip";
 import { useAuthStore } from "../stores/auth";
 import { geocodeApi, memoryApi } from "../api/client";
 import api from "../api/client";
+import { trimmed, trimmedOrUndefined } from "../utils/trim";
 import type { Memory } from "../types";
 import {
   CATEGORY_LABELS,
@@ -12,47 +13,58 @@ import {
   type Activity,
   type ActivityCategory,
   type GeocodeResult,
-type Day,
+  type Day,
 } from "../types";
-import { LMap, LTileLayer, LMarker, LPopup, LPolyline, LIcon } from "@vue-leaflet/vue-leaflet";
-import L from "leaflet";
-
-// Fix Leaflet default marker icon path issue with bundlers
-delete (L.Icon.Default.prototype as any)._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-});
+import TripMap from "../components/TripMap.vue";
 import { useTripSocket } from "../stores/ws";
+
 import SkeletonLoader from "../components/SkeletonLoader.vue";
 import EmptyState from "../components/EmptyState.vue";
 import ErrorState from "../components/ErrorState.vue";
+import ConfirmModal from "../components/ConfirmModal.vue";
 import { VueDraggable } from 'vue-draggable-plus';
 import POIManager from "../components/POIManager.vue";
 import RoutePlanner from "../components/RoutePlanner.vue";
 import { poiApi } from "../api/client";
 import type { POI } from "../types";
 import OfflineBanner from "../components/OfflineBanner.vue";
+import { usePullToRefresh } from "../hooks/usePullToRefresh";
+import { useToast } from "../composables/useToast";
+import { usePhotoUpload } from "../composables/usePhotoUpload";
+import { useSwipeTabs } from "../composables/useSwipe";
+import { useDarkMode } from "../composables/useDarkMode";
+import { useTripBudget } from "../composables/useTripBudget";
+import { useTripMembers } from "../composables/useTripMembers";
+import { useTripMemories } from "../composables/useTripMemories";
+import QuickNote from "../components/QuickNote.vue";
+import PackingList from "../components/PackingList.vue";
+import PollCard from "../components/PollCard.vue";
 const route = useRoute();
 const router = useRouter();
 const tripStore = useTripStore();
-const auth = useAuthStore();const navigator = window.navigator;
+const auth = useAuthStore();
+const navigatorObj = window.navigator;
+const quickNoteRef = ref<InstanceType<typeof QuickNote> | null>(null);
+const { add: addToast } = useToast();
 
 let tripId = route.params.id as string;
 
 // Tabs
-const activeTab = ref<"itinerary" | "map" | "budget" | "memories" | "poi">("itinerary");
+const activeTab = ref<"itinerary" | "map" | "budget" | "memories" | "poi" | "packing" | "photos" | "polls">("itinerary");
 // POI state
 const pois = ref<POI[]>([]);
+const poisLoading = ref(false);
 const routeData = ref<{ coordinates: [number, number][]; distance: number; duration: number } | null>(null);
 
 async function fetchPois() {
+  poisLoading.value = true;
   try {
     const res = await poiApi.list(tripId);
     pois.value = res.data;
   } catch {
     pois.value = [];
+  } finally {
+    poisLoading.value = false;
   }
 }
 
@@ -61,191 +73,66 @@ function onRoute(data: { coordinates: [number, number][]; distance: number; dura
 }
 
 // Pull-to-refresh
-const pullDistance = ref(0);
-const isRefreshing = ref(false);
-const pullThreshold = 80;
-
-let startY = 0;
-let isPulling = false;
-
-function onTouchStart(e: TouchEvent) {
-  if (window.scrollY > 0) return;
-  startY = e.touches[0].clientY;
-  isPulling = true;
-}
-
-function onTouchMove(e: TouchEvent) {
-  if (!isPulling || isRefreshing.value) return;
-  const diff = e.touches[0].clientY - startY;
-  if (diff > 0) {
-    pullDistance.value = Math.min(diff * 0.5, 120);
-  }
-}
-
-function onTouchEnd() {
-  isPulling = false;
-  if (pullDistance.value >= pullThreshold) {
-    isRefreshing.value = true;
-    pullDistance.value = 0;
-    refreshData().finally(() => {
-      isRefreshing.value = false;
-    });
-  } else {
-    pullDistance.value = 0;
-  }
-}
-
-async function refreshData() {
-  try {
-    await tripStore.fetchTrip(tripId);
-  } catch {
-    // error handled by ErrorState
-  }
-  fetchMembers();
-  fetchBudget();
-  fetchExpenses();
-  fetchMemories();
+const { onTouchStart: onSwipeStart, onTouchEnd: onSwipeEnd } = useSwipeTabs(activeTab);
+const { isDark, toggle: toggleDark } = useDarkMode();
+const { pullDistance, isRefreshing, pullThreshold, onTouchStart, onTouchMove, onTouchEnd } = usePullToRefresh(async () => {
+  await tripStore.fetchTrip(tripId);
+  membersCtx.fetchMembers();
+  budget.fetchBudget();
+  fetchBudgetExpenses();
+  memoriesCtx.fetchMemories();
   fetchPois();
-}
+});
 
 // WebSocket
 const socket = useTripSocket(tripId);
+
 watch(() => route.params.id, (newId) => {
   if (newId && newId !== tripId) {
     tripId = newId as string;
     tripStore.fetchTrip(tripId as string);
     socket.disconnect();
     socket.connect();
-    fetchMembers();
-    fetchBudget();
-    fetchExpenses();
-    fetchMemories();
+    membersCtx.fetchMembers();
+    budget.fetchBudget();
+    fetchBudgetExpenses();
+    memoriesCtx.fetchMemories();
     fetchPois();
   }
 });
 
-// Members
-const showMemberModal = ref(false);
-const members = ref<Array<{ id: string; user_id: string; name: string; email: string; role: string }>>([]);
-const inviteEmail = ref("");
-const inviteMsg = ref("");
+const membersCtx = useTripMembers(tripId);
+const budget = useTripBudget(tripId);
+const memoriesCtx = useTripMemories(tripId);
 
-// Budget
-interface BudgetSummary {
-  total_expenses: number;
-  by_category: Record<string, number>;
-  per_person: Record<string, number>;
-  balances: Array<{user_id: string; name: string; paid: number; share: number; balance: number}>;
-}
-const budgetData = ref<BudgetSummary | null>(null);
-const budgetLoading = ref(false);
-// Expenses
-interface Expense {
-  id: string;
-  title: string;
-  amount: number;
-  category: string;
-  paid_by: { user_id: string; name: string };
-  split_with: Array<{ user_id: string; name: string }>;
-}
-const expenses = ref<Expense[]>([]);
-const expensesLoading = ref(false);
+// Destructure budget for template
+const {
+  budgetData, budgetLoading, expenses, expensesLoading,
+  showAddExpense, showSettleUp, settleUpData, settleLoading,
+  newExpenseTitle, newExpenseAmount, newExpenseCategory, newExpensePaidBy, newExpenseSplitWith, creatingExpense,
+  fetchExpenses: fetchBudgetExpenses, handleDeleteExpense,
+  openAddExpense, handleAddExpense,
+  fetchSettleUp, copySettleUp,
+} = budget;
 
-async function fetchExpenses() {
-  expensesLoading.value = true;
-  try {
-    const res = await api.get(`/trips/${tripId}/expenses`);
-    expenses.value = res.data;
-  } catch {
-    expenses.value = [];
-  } finally {
-    expensesLoading.value = false;
-  }
-}
+// Destructure members for template
+const {
+  showMemberModal, members, membersLoading,
+  inviteEmail, inviteMsg, handleInvite,
+} = membersCtx;
 
-async function handleDeleteExpense(expenseId: string) {
-  try {
-    await api.delete(`/expenses/${expenseId}`);
-    await fetchExpenses();
-    await fetchBudget();
-  } catch {
-    // ignore
-  }
-}
-
-// Add expense modal
-const showAddExpense = ref(false);
-const newExpenseTitle = ref("");
-const newExpenseAmount = ref<number | null>(null);
-const newExpenseCategory = ref<string>("other");
-const newExpensePaidBy = ref("");
-const newExpenseSplitWith = ref<string[]>([]);
-
-function openAddExpense() {
-  newExpenseTitle.value = "";
-  newExpenseAmount.value = null;
-  newExpenseCategory.value = "other";
-  newExpensePaidBy.value = auth.user?.id || "";
-  newExpenseSplitWith.value = [];
-  showAddExpense.value = true;
-}
-
-async function handleAddExpense() {
-  if (!newExpenseTitle.value || newExpenseAmount.value === null || !newExpensePaidBy.value) return;
-  try {
-    await api.post(`/trips/${tripId}/expenses`, {
-      title: newExpenseTitle.value,
-      amount: newExpenseAmount.value,
-      category: newExpenseCategory.value,
-      paid_by: newExpensePaidBy.value,
-      split_with: newExpenseSplitWith.value,
-    });
-    showAddExpense.value = false;
-    newExpenseTitle.value = "";
-    newExpenseAmount.value = null;
-    newExpenseCategory.value = "other";
-    newExpensePaidBy.value = "";
-    newExpenseSplitWith.value = [];
-    await fetchExpenses();
-    await fetchBudget();
-  } catch {
-    // ignore
-  }
-}
+// Destructure memories for template
+const {
+  memories, memoriesLoading, showAddMemory,
+  newMemTitle, newMemContent, newMemDate,
+  newMemPhotos, handleFileSelect, removePhoto,
+  allTripPhotos,
+  handleAddMemory, handleDeleteMemory,
+} = memoriesCtx;
 
 
 
-async function fetchMembers() {
-  try {
-    const res = await api.get(`/trips/${tripId}/members`);
-    members.value = res.data;
-  } catch {
-    // ignore
-  }
-}
 
-async function handleInvite() {
-  try {
-    await api.post(`/trips/${tripId}/members/invite`, { email: inviteEmail.value });
-    inviteMsg.value = "✅ 邀請成功！";
-    inviteEmail.value = "";
-    fetchMembers();
-  } catch (e: any) {
-    inviteMsg.value = e.response?.data?.detail || "邀請失敗";
-  }
-}
-
-async function fetchBudget() {
-  budgetLoading.value = true;
-  try {
-    const res = await api.get(`/trips/${tripId}/budget-summary`);
-    budgetData.value = res.data;
-  } catch {
-    budgetData.value = null;
-  } finally {
-    budgetLoading.value = false;
-  }
-}
 
 // New day modal
 const showNewDay = ref(false);
@@ -260,6 +147,7 @@ const newActCategory = ref<ActivityCategory>("other");
 const newActTime = ref("");
 const newActEndTime = ref("");
 const newActTransportMode = ref("");
+const newActAssignee = ref("");
 const newActNotes = ref("");
 // Edit activity modal
 const showEditActivity = ref(false);
@@ -271,6 +159,7 @@ const editActStartTime = ref("");
 const editActEndTime = ref("");
 const editActNotes = ref("");
 const editActTransportMode = ref("");
+const editActAssignee = ref("");
 
 function openEditActivity(act: Activity) {
   editingActId.value = act.id;
@@ -281,6 +170,7 @@ function openEditActivity(act: Activity) {
   editActEndTime.value = act.end_time || "";
   editActNotes.value = act.notes || "";
   editActTransportMode.value = act.transport_mode || "";
+  editActAssignee.value = (act as any).assignee_id || "";
   showEditActivity.value = true;
 }
 
@@ -294,10 +184,12 @@ async function handleUpdateActivity() {
       end_time: editActEndTime.value || undefined,
       notes: editActNotes.value || undefined,
       transport_mode: editActTransportMode.value || undefined,
+      assignee_id: editActAssignee.value || undefined,
     });
     showEditActivity.value = false;
+    addToast("success", "活動已更新");
   } catch {
-    // ignore
+    addToast("error", "更新活動失敗");
   }
 }
 
@@ -308,7 +200,9 @@ const showGeoResults = ref(false);
 
 // Share
 const showShareModal = ref(false);
-const shareUrl = computed(() => `${window.location.origin}/share/${tripStore.currentTrip?.share_code}`);
+const baseUrl = window.location.origin;
+const shareUrl = computed(() => `${baseUrl}/share/${tripStore.currentTrip?.share_code}`);
+const inviteUrl = computed(() => `${baseUrl}/join?trip=${tripStore.currentTrip?.id}&code=${tripStore.currentTrip?.join_code}`);
 
 function openNewActivity(dayId: string) {
   activeDayId.value = dayId;
@@ -318,52 +212,138 @@ function openNewActivity(dayId: string) {
   newActEndTime.value = "";
   newActNotes.value = "";
   newActTransportMode.value = "";
+  newActAssignee.value = "";
   showNewActivity.value = true;
 }
 
+const creatingDay = ref(false);
+
 async function handleCreateDay() {
-  await tripStore.createDay(tripId, {
-    date: newDayDate.value,
-    title: newDayTitle.value || undefined,
-  });
-  showNewDay.value = false;
-  newDayDate.value = "";
-  newDayTitle.value = "";
+  if (creatingDay.value) return;
+  creatingDay.value = true;
+  try {
+    await tripStore.createDay(tripId, {
+      date: newDayDate.value,
+      title: trimmedOrUndefined(newDayTitle.value),
+    });
+    showNewDay.value = false;
+    newDayDate.value = "";
+    newDayTitle.value = "";
+  } catch {
+    addToast("error", "新增天數失敗");
+  } finally {
+    creatingDay.value = false;
+  }
 }
+
+const creatingActivity = ref(false);
 
 async function handleCreateActivity() {
-  await tripStore.createActivity(activeDayId.value, {
-    title: newActTitle.value,
-    category: newActCategory.value,
-    start_time: newActTime.value || undefined,
-    end_time: newActEndTime.value || undefined,
-    notes: newActNotes.value || undefined,
-    transport_mode: newActTransportMode.value || undefined,
-  });
-  showNewActivity.value = false;
+  if (creatingActivity.value) return;
+  creatingActivity.value = true;
+  try {
+    await tripStore.createActivity(activeDayId.value, {
+      title: trimmed(newActTitle.value),
+      category: newActCategory.value,
+      start_time: newActTime.value || undefined,
+      end_time: newActEndTime.value || undefined,
+      notes: newActNotes.value || undefined,
+      transport_mode: newActTransportMode.value || undefined,
+      assignee_id: newActAssignee.value || undefined,
+    });
+    showNewActivity.value = false;
+    addToast("success", "活動已新增");
+  } catch {
+    addToast("error", "新增活動失敗");
+  } finally {
+    creatingActivity.value = false;
+  }
 }
 
-async function handleDeleteActivity(activityId: string) {
-  await tripStore.deleteActivity(activityId);
+// Delete confirmation
+const showDeleteConfirm = ref(false);
+const deletingActivityId = ref("");
+const deletingDayId = ref("");
+
+function confirmDeleteActivity(activityId: string) {
+  deletingActivityId.value = activityId;
+  deletingDayId.value = "";
+  showDeleteConfirm.value = true;
 }
 
-async function handleDeleteDay(dayId: string) {
-  await tripStore.deleteDay(dayId);
+function confirmDeleteDay(dayId: string) {
+  deletingDayId.value = dayId;
+  deletingActivityId.value = "";
+  showDeleteConfirm.value = true;
+}
+
+async function handleDeleteConfirm() {
+  try {
+    if (deletingActivityId.value) {
+      await tripStore.deleteActivity(deletingActivityId.value);
+    } else if (deletingDayId.value) {
+      await tripStore.deleteDay(deletingDayId.value);
+    }
+  } catch {
+    addToast("error", "刪除失敗");
+  } finally {
+    showDeleteConfirm.value = false;
+    deletingActivityId.value = "";
+    deletingDayId.value = "";
+  }
 }
 
 function copyShareUrl() {
   const url = shareUrl.value;
-  if (url && navigator.clipboard) {
-    navigator.clipboard.writeText(url);
+  if (url && navigatorObj.clipboard) {
+    navigatorObj.clipboard.writeText(url);
+  }
+}
+function copyInviteLink() {
+  const url = inviteUrl.value;
+  if (url && navigatorObj.clipboard) {
+    navigatorObj.clipboard.writeText(url);
+  }
+}
+function exportItinerary() {
+  const trip = tripStore.currentTrip;
+  if (!trip) return;
+  
+  let text = `# ${trip.title}\n`;
+  text += `📅 ${trip.start_date} ~ ${trip.end_date}\n`;
+  if (trip.destination_country) text += `🌍 ${trip.destination_country}\n`;
+  text += `\n`;
+  
+  for (const day of tripStore.days) {
+    text += `## ${day.date}${day.title ? ' - ' + day.title : ''}\n`;
+    const acts = tripStore.activities[day.id] || [];
+    for (const act of acts) {
+      const time = act.start_time || '--:--';
+      text += `- [${time}] ${act.title}`;
+      if (act.notes) text += ` — ${act.notes}`;
+      text += `\n`;
+    }
+    if (acts.length === 0) text += `- (無活動)\n`;
+    text += `\n`;
+  }
+  
+  // Copy to clipboard
+  if (navigatorObj.clipboard) {
+    navigatorObj.clipboard.writeText(text);
   }
 }
 
 async function handleToggleShare() {
   const trip = tripStore.currentTrip;
   if (!trip) return;
-  const newVis = trip.visibility === "shared" ? "private" : "shared";
-  await api.put(`/trips/${tripId}`, { visibility: newVis });
-  trip.visibility = newVis as "shared" | "private";
+  try {
+    const newVis = trip.visibility === "shared" ? "private" : "shared";
+    await api.put(`/trips/${tripId}`, { visibility: newVis });
+    trip.visibility = newVis as "shared" | "private";
+    addToast("success", newVis === "shared" ? "行程已公開分享" : "行程已設為私人");
+  } catch {
+    addToast("error", "切換分享狀態失敗");
+  }
 }
 
 // Geocode search
@@ -431,6 +411,62 @@ const poiMarkers = computed(() => {
     }));
 });
 
+const todaySummary = computed(() => {
+  const trip = tripStore.currentTrip;
+  if (!trip || !trip.start_date || !trip.end_date) return null;
+  const today = new Date().toISOString().split("T")[0];
+  if (today < trip.start_date || today > trip.end_date) return null;
+  
+  // Find today's day
+  const todayDay = tripStore.days.find(d => d.date === today);
+  if (!todayDay) return null;
+  
+  const todayActs = tripStore.activities[todayDay.id] || [];
+  const todayExpenses = expenses.value.filter(e => {
+    // Approximate: check if expense date matches today (if expense model has date)
+    return true; // simplified - just show count
+  });
+  
+  return {
+    date: today,
+    dayTitle: todayDay.title,
+    activityCount: todayActs.length,
+    completedCount: todayActs.filter(a => a.start_time && a.start_time < new Date().toTimeString().slice(0, 5)).length,
+  };
+});
+const tripStats = computed(() => {
+  const trip = tripStore.currentTrip;
+  if (!trip) return null;
+
+  // Count all activities
+  let totalActivities = 0;
+  const allLocations = new Set<string>();
+  for (const day of tripStore.days) {
+    const acts = tripStore.activities[day.id] || [];
+    totalActivities += acts.length;
+    for (const act of acts) {
+      if (act.location?.name) allLocations.add(act.location.name);
+    }
+  }
+
+  // Total expenses from budget data
+  const totalExpenses = budgetData.value?.total_expenses || 0;
+
+  // Total memories with photos
+  const photosCount = memories.value.reduce((sum, m) => sum + (m.photo_urls?.length || 0), 0);
+
+  // Trip duration
+  const durationDays = tripStore.days.length;
+
+  return {
+    durationDays,
+    totalActivities,
+    locations: allLocations.size,
+    totalExpenses,
+    photosCount,
+  };
+});
+
 const BUDGET_LABELS: Record<string, string> = {
   food: "🍜 美食",
   transport: "🚆 交通",
@@ -440,69 +476,19 @@ const BUDGET_LABELS: Record<string, string> = {
   other: "📌 其他",
 };
 
-// Memories
-const memories = ref<Memory[]>([]);
-const memoriesLoading = ref(false);
-const showAddMemory = ref(false);
-const newMemTitle = ref("");
-const newMemContent = ref("");
-const newMemDate = ref("");
-const newMemPhotos = ref<string[]>([]);
 
-async function handleFileSelect(e: Event) {
-  const files = (e.target as HTMLInputElement).files;
-  if (!files) return;
-  for (const file of Array.from(files)) {
-    if (newMemPhotos.value.length >= 9) break;
-    const url = URL.createObjectURL(file);
-    newMemPhotos.value.push(url);
-  }
-}
 
-function removePhoto(index: number) {
-  URL.revokeObjectURL(newMemPhotos.value[index]);
-  newMemPhotos.value.splice(index, 1);
-}
-
-async function fetchMemories() {
-  memoriesLoading.value = true;
-  try {
-    const res = await memoryApi.list(tripId);
-    memories.value = res.data;
-  } catch {
-    memories.value = [];
-  } finally {
-    memoriesLoading.value = false;
-  }
-}
-
-async function handleAddMemory() {
-  if (!newMemTitle.value || !newMemDate.value) return;
-  try {
-    await memoryApi.create(tripId, {
-      title: newMemTitle.value,
-      content: newMemContent.value || undefined,
-      date: newMemDate.value,
-      photo_urls: newMemPhotos.value.length > 0 ? newMemPhotos.value : undefined,
-    });
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === "Escape") {
+    showNewDay.value = false;
+    showNewActivity.value = false;
+    showEditActivity.value = false;
     showAddMemory.value = false;
-    newMemTitle.value = "";
-    newMemContent.value = "";
-    newMemDate.value = "";
-    newMemPhotos.value.forEach(url => URL.revokeObjectURL(url));
-    newMemPhotos.value = [];
-    await fetchMemories();
-  } catch {
-    // ignore
-  }
-}
-
-async function handleDeleteMemory(memoryId: string) {
-  try {
-    await memoryApi.delete(memoryId);
-    await fetchMemories();
-  } catch {
-    // ignore
+    showMemberModal.value = false;
+    showShareModal.value = false;
+    showAddExpense.value = false;
+    showSettleUp.value = false;
+    showDeleteConfirm.value = false;
   }
 }
 
@@ -512,14 +498,16 @@ onMounted(async () => {
   } catch {
     // error handled by ErrorState
   }
+  document.addEventListener("keydown", onKeydown);
   socket.connect();
-  fetchMembers();
-  fetchBudget();
-  fetchExpenses();
-  fetchMemories();
+  membersCtx.fetchMembers();
+  budget.fetchBudget();
+  fetchBudgetExpenses();
+  memoriesCtx.fetchMemories();
   fetchPois();
 });
 onUnmounted(() => {
+  document.removeEventListener("keydown", onKeydown);
   clearTimeout(geoTimeout);
 });
 
@@ -527,7 +515,7 @@ onUnmounted(() => {
 
 <template>
     <OfflineBanner />
-  <div class="min-h-screen bg-gray-50" @touchstart="onTouchStart" @touchmove="onTouchMove" @touchend="onTouchEnd">
+  <div class="min-h-screen bg-gray-50" @touchstart="onTouchStart" @touchmove="onTouchMove" @touchend="(e: TouchEvent) => { onTouchEnd(); onSwipeEnd(e); }">
     <!-- Pull-to-refresh indicator -->
     <div
       v-if="pullDistance > 0 || isRefreshing"
@@ -575,6 +563,7 @@ onUnmounted(() => {
               🔗 分享
             </button>
             <span class="text-sm text-white/80 ml-1">{{ auth.user?.name }}</span>
+            <button @click="toggleDark" class="text-sm text-white/60 hover:text-white transition ml-1" :title="isDark ? '切換亮色' : '切換暗色'">{{ isDark ? '☀️' : '🌙' }}</button>
           </div>
         </div>
         <!-- Hero info row -->
@@ -586,8 +575,25 @@ onUnmounted(() => {
           <span v-if="tripStore.currentTrip?.destination_tz_offset !== null" class="inline-flex items-center gap-1 rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-medium text-white/90">
             🕐 UTC{{ (tripStore.currentTrip?.destination_tz_offset ?? 0) >= 0 ? '+' : '' }}{{ tripStore.currentTrip?.destination_tz_offset }}
           </span>
-          <span v-if="!navigator.onLine" class="inline-flex items-center gap-1 rounded-full bg-amber-500/20 px-2 py-0.5 text-xs text-amber-200">
+          <span v-if="!navigatorObj.onLine" class="inline-flex items-center gap-1 rounded-full bg-amber-500/20 px-2 py-0.5 text-xs text-amber-200">
             ⚠️ 離線
+          </span>
+        </div>        <!-- Trip Stats -->
+        <div v-if="tripStats && activeTab === 'itinerary'" class="mt-3 flex flex-wrap gap-2">
+          <span class="inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-0.5 text-xs text-white/90">
+            📅 {{ tripStats.durationDays }} 天
+          </span>
+          <span class="inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-0.5 text-xs text-white/90">
+            📍 {{ tripStats.totalActivities }} 個活動
+          </span>
+          <span v-if="tripStats.locations > 0" class="inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-0.5 text-xs text-white/90">
+            🏙️ {{ tripStats.locations }} 個地點
+          </span>
+          <span v-if="tripStats.totalExpenses > 0" class="inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-0.5 text-xs text-white/90">
+            💰 ${{ tripStats.totalExpenses.toLocaleString() }}
+          </span>
+          <span v-if="tripStats.photosCount > 0" class="inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-0.5 text-xs text-white/90">
+            📸 {{ tripStats.photosCount }} 張照片
           </span>
         </div>
       </div>
@@ -646,6 +652,36 @@ onUnmounted(() => {
           📍 景點
           <span v-if="activeTab === 'poi'" class="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-indigo-500 to-purple-500"></span>
         </button>
+        <button
+          @click="activeTab = 'packing'"
+          :class="[
+            'px-6 py-3 text-sm font-medium transition relative',
+            activeTab === 'packing' ? 'text-indigo-600' : 'text-gray-500 hover:text-gray-700',
+          ]"
+        >
+          🎒 打包
+          <span v-if="activeTab === 'packing'" class="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-indigo-500 to-purple-500"></span>
+        </button>
+        <button
+          @click="activeTab = 'photos'"
+          :class="[
+            'px-6 py-3 text-sm font-medium transition relative',
+            activeTab === 'photos' ? 'text-indigo-600' : 'text-gray-500 hover:text-gray-700',
+          ]"
+        >
+          📸 相簿
+          <span v-if="activeTab === 'photos'" class="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-indigo-500 to-purple-500"></span>
+        </button>
+        <button
+          @click="activeTab = 'polls'"
+          :class="[
+            'px-6 py-3 text-sm font-medium transition relative',
+            activeTab === 'polls' ? 'text-indigo-600' : 'text-gray-500 hover:text-gray-700',
+          ]"
+        >
+          📊 投票
+          <span v-if="activeTab === 'polls'" class="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-indigo-500 to-purple-500"></span>
+        </button>
       </div>
     </div>
 
@@ -661,8 +697,23 @@ onUnmounted(() => {
 
     <!-- Content -->
     <div v-else class="mx-auto max-w-6xl px-4 py-6 pb-20 md:pb-0">
+      <!-- Today Summary Card -->
+      <div v-if="todaySummary" class="mb-6 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 p-5 text-white shadow-lg">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-xs text-white/80">📅 今日行程</p>
+            <p class="text-lg font-bold mt-0.5">{{ todaySummary.date }}</p>
+            <p v-if="todaySummary.dayTitle" class="text-sm text-white/80 mt-0.5">{{ todaySummary.dayTitle }}</p>
+          </div>
+          <div class="text-right">
+            <p class="text-2xl font-bold">{{ todaySummary.activityCount }}</p>
+            <p class="text-xs text-white/80">個活動</p>
+          </div>
+        </div>
+      </div>
+
       <!-- ========== ITINERARY TAB (Timeline) ========== -->
-      <div v-if="activeTab === 'itinerary'" class="flex flex-col lg:flex-row gap-6">
+      <div v-show="activeTab === 'itinerary'" class="flex flex-col lg:flex-row gap-6">
         <!-- Left: Itinerary -->
         <div class="flex-1 min-w-0">
         <VueDraggable v-model="tripStore.days" ghost-class="opacity-30" @end="() => tripStore.reorderDays(tripStore.days.map(d => d.id))">
@@ -693,7 +744,7 @@ onUnmounted(() => {
                     ＋ 活動
                   </button>
                   <button
-                    @click="handleDeleteDay(day.id)"
+                    @click="confirmDeleteDay(day.id)"
                     class="text-gray-300 hover:text-red-500 text-xs"
                     title="刪除天數"
                   >
@@ -732,7 +783,7 @@ onUnmounted(() => {
                     <!-- Actions -->
                     <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition flex-shrink-0">
                       <button @click="openEditActivity(act)" class="text-gray-300 hover:text-indigo-500 text-xs" title="編輯">✏️</button>
-                      <button @click="handleDeleteActivity(act.id)" class="text-gray-300 hover:text-red-500 text-xs" title="刪除">✕</button>
+                      <button @click="confirmDeleteActivity(act.id)" class="text-gray-300 hover:text-red-500 text-xs" title="刪除">✕</button>
                     </div>
                   </div>
                 </VueDraggable>
@@ -754,91 +805,33 @@ onUnmounted(() => {
         <!-- Right: Map (desktop only, side-by-side with itinerary) -->
         <div class="hidden lg:block lg:w-[420px] xl:w-[500px] flex-shrink-0">
           <div class="sticky top-4 h-[calc(100vh-12rem)] rounded-xl overflow-hidden border border-gray-200 shadow-sm">
-            <LMap :zoom="mapZoom" :center="mapCenter" style="height: 100%; width: 100%">
-              <LTileLayer
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                attribution="© OpenStreetMap contributors"
-              />
-              <LMarker v-for="(m, i) in mapMarkers" :key="i" :lat-lng="[m.lat, m.lng]">
-                <LPopup>
-                  <div class="text-sm">
-                    <p class="font-bold">{{ m.activity.title }}</p>
-                    <p class="text-xs text-gray-500">{{ m.day.date }} · {{ CATEGORY_LABELS[m.activity.category] }}</p>
-                  </div>
-                </LPopup>
-              </LMarker>
-              <LPolyline v-if="routeData" :lat-lngs="routeData.coordinates.map(c => [c[1], c[0]])" color="#4f46e5" :weight="4" />
-            </LMap>
+            <TripMap :markers="mapMarkers" :poi-markers="poiMarkers" :route-data="routeData" :center="mapCenter" :zoom="mapZoom" />
           </div>
         </div>
       </div>
-        >
-          ＋ 新增天數
-        </button>
-        </div>
-        <!-- End left: Itinerary -->
-
-        <!-- Right: Map (desktop only, shown inline with itinerary) -->
-        <div class="hidden lg:block lg:w-[420px] xl:w-[500px] flex-shrink-0">
-          <div class="sticky top-4 h-[calc(100vh-12rem)] rounded-xl overflow-hidden border border-gray-200 shadow-sm">
-            <LMap :zoom="mapZoom" :center="mapCenter" style="height: 100%; width: 100%">
-              <LTileLayer
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                attribution="© OpenStreetMap contributors"
-              />
-              <LMarker v-for="(m, i) in mapMarkers" :key="i" :lat-lng="[m.lat, m.lng]">
-                <LPopup>
-                  <div class="text-sm">
-                    <p class="font-bold">{{ m.activity.title }}</p>
-                    <p class="text-xs text-gray-500">{{ m.day.date }} · {{ CATEGORY_LABELS[m.activity.category] }}</p>
-                  </div>
-                </LPopup>
-              </LMarker>
-              <LPolyline v-if="routeData" :lat-lngs="routeData.coordinates.map(c => [c[1], c[0]])" color="#4f46e5" :weight="4" />
-            </LMap>
-          </div>
-        </div>
-      </div>
-      <!-- End itinerary tab -->      </div>
 
       <!-- ========== MAP TAB ========== -->
-      <div v-if="activeTab === 'map'" class="h-[70vh] rounded-xl overflow-hidden border border-gray-200">
-        <LMap :zoom="mapZoom" :center="mapCenter" style="height: 100%; width: 100%">
-          <LTileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution="© OpenStreetMap contributors"
-          />
-          <LMarker v-for="(m, i) in mapMarkers" :key="i" :lat-lng="[m.lat, m.lng]">
-            <LPopup>
-              <div class="text-sm">
-                <p class="font-bold">{{ m.activity.title }}</p>
-                <p class="text-xs text-gray-500">{{ m.day.date }} · {{ CATEGORY_LABELS[m.activity.category] }}</p>
-              </div>
-            </LPopup>
-          </LMarker>
-          <LMarker v-for="(pm, i) in poiMarkers" :key="'poi-' + i" :lat-lng="[pm.lat, pm.lng]">
-            <LIcon :icon="L.divIcon({ className: 'poi-marker', html: '📍', iconSize: [24, 24] })" />
-            <LPopup>
-              <div class="text-sm">
-                <p class="font-bold">{{ pm.poi.name }}</p>
-                <p class="text-xs text-gray-500">{{ pm.poi.category }}</p>
-              </div>
-            </LPopup>
-          </LMarker>
-          <LPolyline v-if="routeData" :lat-lngs="routeData.coordinates.map(c => [c[1], c[0]])" color="#4f46e5" :weight="4" />
-        </LMap>
+      <div v-show="activeTab === 'map'" class="h-[70vh] rounded-xl overflow-hidden border border-gray-200">
+        <TripMap :markers="mapMarkers" :poi-markers="poiMarkers" :route-data="routeData" :center="mapCenter" :zoom="mapZoom" />
       </div>
 
       <!-- ========== BUDGET TAB ========== -->
-      <div v-if="activeTab === 'budget'">
+      <div v-show="activeTab === 'budget'">
         <!-- Budget tab header -->
         <div class="mb-4 flex items-center justify-between">
           <h2 class="text-lg font-bold text-gray-900">預算明細</h2>
           <button
-            @click="openAddExpense()"
+            @click="openAddExpense(auth.user?.id)"
             class="rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white hover:bg-indigo-700"
           >
             ＋ 開銷
+          </button>
+          <button
+            @click="fetchSettleUp"
+            :disabled="settleLoading"
+            class="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 transition"
+          >
+            {{ settleLoading ? '計算中...' : '🧮 結算' }}
           </button>
         </div>
         <div v-if="budgetLoading" class="py-12 text-center text-gray-400">
@@ -897,8 +890,8 @@ onUnmounted(() => {
                   <p class="text-sm font-medium text-gray-900">{{ expense.title }}</p>
                   <div class="flex items-center gap-2 mt-0.5">
                     <span class="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600">{{ BUDGET_LABELS[expense.category] || expense.category }}</span>
-                    <span class="text-xs text-gray-400">由 {{ expense.paid_by.name }} 付款</span>
-                    <span v-if="expense.split_with && expense.split_with.length > 0" class="text-xs text-gray-400">· 與 {{ expense.split_with.length }} 人分攤</span>
+                    <span class="text-xs text-gray-400">由 {{ expense.paid_by_name }} 付款</span>
+                    <span v-if="expense.splits && expense.splits.length > 0" class="text-xs text-gray-400">· 與 {{ expense.splits.length }} 人分攤</span>
                   </div>
                 </div>
                 <div class="flex items-center gap-3 flex-shrink-0">
@@ -918,7 +911,7 @@ onUnmounted(() => {
       </div>
 
       <!-- ========== MEMORIES TAB ========== -->
-      <div v-if="activeTab === 'memories'">
+      <div v-show="activeTab === 'memories'">
         <div class="mb-4 flex items-center justify-between">
           <h2 class="text-lg font-bold text-gray-900">📝 旅程回憶</h2>
           <button
@@ -972,41 +965,99 @@ onUnmounted(() => {
       </div>
 
       <!-- ========== POI TAB ========== -->
-      <div v-if="activeTab === 'poi'" class="space-y-6">
+      <div v-show="activeTab === 'poi'" class="space-y-6">
         <POIManager :trip-id="tripId" />
         <RoutePlanner :trip-id="tripId" :pois="pois" @route="onRoute" />
       </div>
 
+      <!-- ========== PACKING TAB ========== -->
+      <div v-show="activeTab === 'packing'">
+        <PackingList :trip-id="tripId" />
+      </div>
+
+      <!-- ========== POLLS TAB ========== -->
+      <div v-show="activeTab === 'polls'">
+        <PollCard :trip-id="tripId" />
+      </div>
+
+      <!-- ========== PHOTOS TAB ========== -->
+      <div v-show="activeTab === 'photos'">
+        <div class="mb-4 flex items-center justify-between">
+          <h2 class="text-lg font-bold text-gray-900">📸 相簿</h2>
+          <span class="text-sm text-gray-400">{{ allTripPhotos.length }} 張照片</span>
+        </div>
+        <div v-if="allTripPhotos.length === 0" class="py-16 text-center">
+          <p class="text-5xl mb-3">📸</p>
+          <p class="text-sm text-gray-400">還沒有照片，開始記錄你的旅程吧！</p>
+        </div>
+        <div v-else class="columns-2 md:columns-3 gap-3 space-y-3">
+          <div v-for="(photo, i) in allTripPhotos" :key="i" class="break-inside-avoid rounded-xl overflow-hidden shadow-sm border border-gray-200 bg-white">
+            <img :src="photo.url" class="w-full object-cover" loading="lazy" />
+            <div class="px-3 py-2">
+              <p class="text-xs text-gray-500">{{ photo.user_name }} · {{ photo.date }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
+
+    <QuickNote ref="quickNoteRef" :trip-id="tripId" @saved="memoriesCtx.fetchMemories" />
+
+    <ConfirmModal
+      :show="showDeleteConfirm"
+      title="確認刪除"
+      :message="deletingActivityId ? '確定要刪除此活動？' : '確定要刪除此天數及其所有活動？'"
+      confirm-text="刪除"
+      cancel-text="取消"
+      variant="danger"
+      @confirm="handleDeleteConfirm"
+      @cancel="showDeleteConfirm = false"
+    />
 
 <!-- ========== ADD MEMORY MODAL ========== -->
     <!-- Mobile Bottom Nav -->
     <div class="fixed bottom-0 left-0 right-0 z-50 border-t border-gray-200 bg-white md:hidden safe-area-bottom">
-      <div class="flex">
-        <button @click="activeTab = 'itinerary'" class="flex-1 flex flex-col items-center py-2 text-xs"
+      <div class="flex overflow-x-auto scrollbar-hide">
+        <button @click="activeTab = 'itinerary'" class="flex-shrink-0 flex flex-col items-center px-4 py-2 text-xs"
           :class="activeTab === 'itinerary' ? 'text-indigo-600' : 'text-gray-400'">
           <span class="text-lg">📅</span>
           <span>行程</span>
         </button>
-        <button @click="activeTab = 'map'" class="flex-1 flex flex-col items-center py-2 text-xs"
+        <button @click="activeTab = 'map'" class="flex-shrink-0 flex flex-col items-center px-4 py-2 text-xs"
           :class="activeTab === 'map' ? 'text-indigo-600' : 'text-gray-400'">
           <span class="text-lg">🗺️</span>
           <span>地圖</span>
         </button>
-        <button @click="activeTab = 'budget'" class="flex-1 flex flex-col items-center py-2 text-xs"
+        <button @click="activeTab = 'budget'" class="flex-shrink-0 flex flex-col items-center px-4 py-2 text-xs"
           :class="activeTab === 'budget' ? 'text-indigo-600' : 'text-gray-400'">
           <span class="text-lg">💰</span>
           <span>預算</span>
         </button>
-        <button @click="activeTab = 'memories'" class="flex-1 flex flex-col items-center py-2 text-xs"
+        <button @click="activeTab = 'memories'" class="flex-shrink-0 flex flex-col items-center px-4 py-2 text-xs"
           :class="activeTab === 'memories' ? 'text-indigo-600' : 'text-gray-400'">
           <span class="text-lg">📝</span>
           <span>回憶</span>
         </button>
-        <button @click="activeTab = 'poi'" class="flex-1 flex flex-col items-center py-2 text-xs"
+        <button @click="activeTab = 'poi'" class="flex-shrink-0 flex flex-col items-center px-4 py-2 text-xs"
           :class="activeTab === 'poi' ? 'text-indigo-600' : 'text-gray-400'">
           <span class="text-lg">📍</span>
           <span>景點</span>
+        </button>
+        <button @click="activeTab = 'packing'" class="flex-shrink-0 flex flex-col items-center px-4 py-2 text-xs"
+          :class="activeTab === 'packing' ? 'text-indigo-600' : 'text-gray-400'">
+          <span class="text-lg">🎒</span>
+          <span>打包</span>
+        </button>
+        <button @click="activeTab = 'photos'" class="flex-shrink-0 flex flex-col items-center px-4 py-2 text-xs"
+          :class="activeTab === 'photos' ? 'text-indigo-600' : 'text-gray-400'">
+          <span class="text-lg">📸</span>
+          <span>相簿</span>
+        </button>
+        <button @click="activeTab = 'polls'" class="flex-shrink-0 flex flex-col items-center px-4 py-2 text-xs"
+          :class="activeTab === 'polls' ? 'text-indigo-600' : 'text-gray-400'">
+          <span class="text-lg">📊</span>
+          <span>投票</span>
         </button>
       </div>
     </div>
@@ -1027,7 +1078,7 @@ onUnmounted(() => {
                 <label v-if="newMemPhotos.length < 9" class="flex h-20 w-20 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 hover:border-indigo-400">
                   <span class="text-2xl text-gray-400">📷</span>
                   <span class="text-xs text-gray-400">拍照/選取</span>
-                  <input type="file" accept="image/*" capture="environment" multiple class="hidden" @change="handleFileSelect" />
+                  <input type="file" accept="image/*" capture multiple class="hidden" @change="handleFileSelect" />
                 </label>
               </div>
             </div>
@@ -1072,6 +1123,14 @@ onUnmounted(() => {
               <option value="bus">🚌 巴士</option>
               <option value="ferry">⛴️ 渡輪</option>
               <option value="car">🚗 自駕</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-xs text-gray-500">負責人</label>
+            <select v-model="editActAssignee" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+              <option value="">未指定</option>
+              <option v-for="m in members" :key="m.user_id" :value="m.user_id">{{ m.name }}</option>
             </select>
           </div>
 
@@ -1136,6 +1195,14 @@ onUnmounted(() => {
               <option value="bus">🚌 巴士</option>
               <option value="ferry">⛴️ 渡輪</option>
               <option value="car">🚗 自駕</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-xs text-gray-500">負責人</label>
+            <select v-model="newActAssignee" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+              <option value="">未指定</option>
+              <option v-for="m in members" :key="m.user_id" :value="m.user_id">{{ m.name }}</option>
             </select>
           </div>
 
@@ -1237,12 +1304,75 @@ onUnmounted(() => {
               </button>
             </div>
           </div>
+          <!-- Invite link section -->
+          <div v-if="tripStore.currentTrip?.visibility === 'shared'" class="mt-4 border-t border-gray-100 pt-4">
+            <label class="block text-xs text-gray-500 mb-1">邀請連結</label>
+            <div class="flex gap-2">
+              <input 
+                :value="inviteUrl" 
+                readonly 
+                class="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm bg-gray-50" 
+              />
+              <button
+                @click="copyInviteLink"
+                class="rounded-lg bg-indigo-600 px-3 py-2 text-sm text-white hover:bg-indigo-700"
+              >
+                複製
+              </button>
+            </div>
+            <p class="mt-2 text-xs text-gray-400">分享此連結給好友，他們不需註冊即可加入行程</p>
+          </div>
 
+          <!-- Export itinerary section -->
+          <div class="mt-4 border-t border-gray-100 pt-4">
+            <label class="block text-xs text-gray-500 mb-2">匯出行程</label>
+            <button
+              @click="exportItinerary()"
+              class="w-full rounded-lg bg-gray-100 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-200 transition flex items-center justify-center gap-2"
+            >
+              📋 複製為純文字
+            </button>
+            <p class="mt-1 text-xs text-gray-400">複製行程表到剪貼簿，可貼到 LINE、備忘錄等</p>
+          </div>
           <button @click="showShareModal = false" class="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">
             關閉
           </button>
         </div>
       </div>
     </div>
+
+    <!-- Settle Up Modal -->
+    <div v-if="showSettleUp" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40" @click.self="showSettleUp = false">
+      <div class="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-bold">💰 結算計畫</h3>
+          <button @click="showSettleUp = false" class="text-gray-400 hover:text-gray-600">✕</button>
+        </div>
+        <div v-if="!settleUpData || settleUpData.transactions.length === 0" class="py-8 text-center text-gray-400">
+          <p class="text-3xl mb-2">✅</p>
+          <p class="text-sm">無人需要結算，所有人已平分</p>
+        </div>
+        <div v-else class="space-y-3">
+          <div v-for="(t, i) in settleUpData.transactions" :key="i"
+            class="flex items-center justify-between rounded-lg bg-gray-50 p-4">
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-medium text-red-600">{{ t.from_user_name }}</span>
+              <span class="text-gray-400">→</span>
+              <span class="text-sm font-medium text-green-600">{{ t.to_user_name }}</span>
+            </div>
+            <span class="text-sm font-bold text-gray-900">${{ t.amount.toLocaleString() }}</span>
+          </div>
+        </div>
+        <div class="mt-4 flex justify-end gap-2">
+          <button @click="copySettleUp" v-if="settleUpData?.transactions.length" class="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">📋 複製</button>
+          <button @click="showSettleUp = false" class="rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white hover:bg-indigo-700">關閉</button>
+        </div>
+    </div>
+  </div>
   </div>
 </template>
+
+<style scoped>
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+</style>

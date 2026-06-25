@@ -77,9 +77,11 @@ export const activityApi = {
       title: string;
       notes?: string;
       start_time?: string;
+      end_time?: string;
       duration_minutes?: number;
       category?: string;
       location_id?: string;
+      assignee_id?: string;
     },
   ) => api.post(`/days/${dayId}/activities`, data),
   update: (activityId: string, data: Record<string, unknown>) =>
@@ -145,6 +147,36 @@ export const guestApi = {
     api.post("/trips/join", data),
   getJoinInfo: (tripId: string) =>
     api.get(`/trips/${tripId}/join-info`),
+};
+
+/* Packing List */
+export const packingApi = {
+  list: (tripId: string) => api.get(`/trips/${tripId}/packing`),
+  create: (tripId: string, data: { name: string; category?: string; quantity?: number }) =>
+    api.post(`/trips/${tripId}/packing`, data),
+  update: (itemId: string, data: Record<string, unknown>) =>
+    api.put(`/packing/${itemId}`, data),
+  delete: (itemId: string) => api.delete(`/packing/${itemId}`),
+  batchToggle: (tripId: string, itemIds: string[], checked: boolean) =>
+    api.put(`/trips/${tripId}/packing/batch-toggle`, { item_ids: itemIds, checked }),
+};
+
+/* Comments */
+export const commentApi = {
+  list: (activityId: string) => api.get(`/activities/${activityId}/comments`),
+  create: (activityId: string, data: { content: string }) =>
+    api.post(`/activities/${activityId}/comments`, data),
+  delete: (commentId: string) => api.delete(`/comments/${commentId}`),
+};
+
+/* Polls */
+export const pollApi = {
+  list: (tripId: string) => api.get(`/trips/${tripId}/polls`),
+  create: (tripId: string, data: { question: string; options: string[] }) =>
+    api.post(`/trips/${tripId}/polls`, data),
+  vote: (pollId: string, optionId: string) =>
+    api.post(`/polls/${pollId}/vote`, { option_id: optionId }),
+  close: (pollId: string) => api.put(`/polls/${pollId}/close`),
 };
 
 /* POIs */

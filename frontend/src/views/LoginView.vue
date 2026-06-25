@@ -7,6 +7,7 @@ const router = useRouter();
 const auth = useAuthStore();
 const email = ref("");
 const password = ref("");
+const showPassword = ref(false);
 const error = ref("");
 
 async function handleLogin() {
@@ -42,13 +43,18 @@ async function handleLogin() {
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700">密碼</label>
-          <input
-            v-model="password"
-            type="password"
-            required
-            class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-            placeholder="••••••••"
-          />
+          <div class="relative mt-1">
+            <input
+              v-model="password"
+              :type="showPassword ? 'text' : 'password'"
+              required
+              class="block w-full rounded-lg border border-gray-300 px-3 py-2 pr-10 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+              placeholder="••••••••"
+            />
+            <button type="button" @click="showPassword = !showPassword" class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm">
+              {{ showPassword ? '🙈' : '👁️' }}
+            </button>
+          </div>
         </div>
 
         <p v-if="error" class="text-sm text-red-600">{{ error }}</p>

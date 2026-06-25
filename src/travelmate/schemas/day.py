@@ -3,6 +3,8 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
 
+from src.travelmate.schemas.activity import ActivityResponse
+
 
 class DayCreate(BaseModel):
     date: date
@@ -22,6 +24,7 @@ class DayResponse(BaseModel):
     date: date
     title: Optional[str] = None
     order_index: int
+    activities: list[ActivityResponse] = []  # Populated when loaded
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

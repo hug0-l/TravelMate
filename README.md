@@ -174,28 +174,6 @@ cd frontend && npx vue-tsc --noEmit
 - **Phase 3** 🔲 旅程回憶與照片時間軸 + AI 行程推薦
 
 ## 🌐 UI 語言
-即可獲得 24 小時有效的 Guest Token，無需註冊。
-
-## ⚙️ 管理後台
-
-路徑 `/admin`，僅 `is_admin=true` 的用戶可存取：
-- 📊 系統統計（用戶/行程/活動/開銷/回憶數量）
-- 👥 用戶管理（列表、切換管理員權限）
-- 📅 近期行程列表
-
-## 🔐 資安防護
-
-| 機制 | 說明 |
-|------|------|
-| 密碼儲存 | bcrypt 雜湊 |
-| JWT | access token 1h + refresh token 30d |
-| Guest token | 24h 有效期，僅可存取特定行程 |
-| WebSocket | 首條訊息認證（非 query string） |
-| CORS | 可透過 `CORS_ORIGINS` 環境變數設定 |
-| SQL 注入 | SQLAlchemy ORM 參數化查詢 |
-| 輸入驗證 | EmailStr、密碼 8 字元、形狀驗證 |
-
-## 📋 MVP 路線圖## 🌐 UI 語言
 
 繁體中文（Traditional Chinese）
 

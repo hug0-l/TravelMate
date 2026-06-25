@@ -1,9 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from src.travelmate.auth.deps import get_current_user
 from src.travelmate.auth.jwt import create_access_token, create_refresh_token, decode_refresh_token, hash_password, verify_password
+from src.travelmate.config import settings
 from src.travelmate.database import get_db
 from src.travelmate.models.user import User
 from src.travelmate.schemas.auth import LoginRequest, RefreshRequest, RegisterRequest, TokenResponse
@@ -11,8 +14,21 @@ from src.travelmate.schemas.auth import LoginRequest, RefreshRequest, RegisterRe
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
+if settings.rate_limit_enabled:
+    limiter = Limiter(key_func=get_remote_address)
+
+    def rate_limit(limit_str: str):
+        return limiter.limit(limit_str)
+else:
+    limiter = None
+
+    def rate_limit(limit_str: str):
+        return lambda f: f
+
+
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
+@rate_limit("5/minute")
+async def register(request: Request, body: RegisterRequest, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == body.email))
     if result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -30,7 +46,8 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
+@rate_limit("10/minute")
+async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == body.email))
     user = result.scalar_one_or_none()
     if not user or not verify_password(body.password, user.hashed_password):

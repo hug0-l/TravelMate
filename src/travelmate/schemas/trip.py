@@ -4,6 +4,7 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict
 
 from src.travelmate.models.trip import TripVisibility
+from src.travelmate.schemas.day import DayResponse
 
 
 class TripCreate(BaseModel):
@@ -45,6 +46,11 @@ class TripResponse(BaseModel):
     destination_tz_offset: Optional[int] = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+
+class TripDetailResponse(TripResponse):
+    """Trip response with days and activities (for share/public view)."""
+    days: list[DayResponse] = []
 
 
 class TripListResponse(BaseModel):

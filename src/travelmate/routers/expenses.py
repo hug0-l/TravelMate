@@ -18,6 +18,8 @@ from src.travelmate.schemas.expense import (
     ExpenseCreate,
     ExpenseResponse,
     ExpenseUpdate,
+    SettleUpResponse,
+    SettleUpTransaction,
     SplitResponse,
 )
 
@@ -191,6 +193,69 @@ async def settle_split(
     split.settled = not split.settled
     await db.commit()
     return {"settled": split.settled}
+
+
+@router.get("/api/trips/{trip_id}/settle-up", response_model=SettleUpResponse)
+async def settle_up(
+    trip_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await _verify_trip_access(trip_id, user, db)
+
+    # Get all expenses with splits for this trip
+    result = await db.execute(
+        select(Expense)
+        .options(selectinload(Expense.splits))
+        .where(Expense.trip_id == trip_id)
+    )
+    expenses = result.scalars().all()
+
+    # Get member names
+    members_result = await db.execute(
+        select(User).join(TripMember).where(TripMember.trip_id == trip_id)
+    )
+    members = {m.id: m.name for m in members_result.scalars().all()}
+
+    # Calculate balances: positive = should receive, negative = should pay
+    balance: dict[str, float] = defaultdict(float)
+
+    for e in expenses:
+        balance[e.paid_by] += e.amount  # they paid, so they're owed
+        for s in e.splits:
+            balance[s.user_id] -= s.share_amount  # they owe their share
+
+    # Greedy algorithm: match highest creditor with highest debtor
+    creditors = [(uid, amt) for uid, amt in balance.items() if amt > 0]
+    debtors = [(uid, -amt) for uid, amt in balance.items() if amt < 0]
+    creditors.sort(key=lambda x: -x[1])
+    debtors.sort(key=lambda x: -x[1])
+
+    transactions = []
+    ci = di = 0
+    while ci < len(creditors) and di < len(debtors):
+        uid_c, amt_c = creditors[ci]
+        uid_d, amt_d = debtors[di]
+        transfer = min(amt_c, amt_d)
+        if transfer > 0.01:
+            transactions.append(SettleUpTransaction(
+                from_user_id=uid_d,
+                from_user_name=members.get(uid_d, "Unknown"),
+                to_user_id=uid_c,
+                to_user_name=members.get(uid_c, "Unknown"),
+                amount=round(transfer, 2),
+            ))
+        creditors[ci] = (uid_c, round(amt_c - transfer, 2))
+        debtors[di] = (uid_d, round(amt_d - transfer, 2))
+        if creditors[ci][1] < 0.01:
+            ci += 1
+        if debtors[di][1] < 0.01:
+            di += 1
+
+    return SettleUpResponse(
+        transactions=transactions,
+        total_balance={uid: round(amt, 2) for uid, amt in balance.items()},
+    )
 
 
 async def _enrich_expenses(expenses: list[Expense], db: AsyncSession) -> list[ExpenseResponse]:

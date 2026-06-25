@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref } from "vue";
-import { useRouter } from "vue-router";
+import { ref, onMounted } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import api from "../api/client";
 
+const route = useRoute();
 const router = useRouter();
 const tripId = ref("");
 const joinCode = ref("");
@@ -10,19 +11,37 @@ const nickname = ref("");
 const errorMsg = ref("");
 const loading = ref(false);
 const tripTitle = ref("");
+const lookingUp = ref(false);
+
+onMounted(() => {
+  if (route.query.trip) {
+    tripId.value = route.query.trip as string;
+    lookupTrip();
+  }
+  if (route.query.code) {
+    joinCode.value = route.query.code as string;
+  }
+});
 
 async function lookupTrip() {
   if (tripId.value.length < 5) return;
+  lookingUp.value = true;
   try {
     const res = await api.get(`/trips/${tripId.value}/join-info`);
     tripTitle.value = res.data.title;
   } catch {
     tripTitle.value = "";
+  } finally {
+    lookingUp.value = false;
   }
 }
 
 async function handleJoin() {
   if (!tripId.value || !joinCode.value || !nickname.value) return;
+  if (!/^\d{6}$/.test(joinCode.value)) {
+    errorMsg.value = "加入碼必須為 6 位數字";
+    return;
+  }
   loading.value = true;
   errorMsg.value = "";
   try {
@@ -54,7 +73,8 @@ async function handleJoin() {
           <label class="block text-xs text-gray-500 mb-1">行程 ID</label>
           <input v-model="tripId" @input="lookupTrip" placeholder="輸入行程 ID" required
             class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500" />
-          <p v-if="tripTitle" class="mt-1 text-xs text-green-600">✅ 找到行程：{{ tripTitle }}</p>
+          <p v-if="lookingUp" class="mt-1 text-xs text-gray-400">🔍 查詢中...</p>
+          <p v-else-if="tripTitle" class="mt-1 text-xs text-green-600">✅ 找到行程：{{ tripTitle }}</p>
         </div>
 
         <div>

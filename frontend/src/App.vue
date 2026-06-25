@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
+import ToastContainer from "./components/ToastContainer.vue";
 import { useAuthStore } from "./stores/auth";
 
 const auth = useAuthStore();
@@ -30,7 +31,12 @@ async function handleInstall() {
 
 <template>
   <div class="min-h-screen bg-gray-50">
-    <router-view />
+    <ToastContainer />
+    <router-view v-slot="{ Component, route: r }">
+      <Transition name="page" mode="out-in">
+        <component :is="Component" :key="r.path" />
+      </Transition>
+    </router-view>
 
     <div
       v-if="showInstallPrompt"
@@ -59,3 +65,18 @@ async function handleInstall() {
     </div>
   </div>
 </template>
+
+<style>
+.page-enter-active,
+.page-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.page-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.page-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+</style>

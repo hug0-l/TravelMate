@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, computed } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 
@@ -8,7 +8,22 @@ const auth = useAuthStore();
 const name = ref("");
 const email = ref("");
 const password = ref("");
+const showPassword = ref(false);
 const error = ref("");
+
+const passwordStrength = computed(() => {
+  const pwd = password.value;
+  if (!pwd) return { label: "", color: "", width: "0%" };
+  let score = 0;
+  if (pwd.length >= 6) score += 25;
+  if (pwd.length >= 10) score += 25;
+  if (/[A-Z]/.test(pwd) && /[a-z]/.test(pwd)) score += 25;
+  if (/\d/.test(pwd)) score += 15;
+  if (/[^A-Za-z0-9]/.test(pwd)) score += 10;
+  if (score >= 90) return { label: "很強", color: "bg-green-500", width: "100%" };
+  if (score >= 60) return { label: "中等", color: "bg-yellow-500", width: "66%" };
+  return { label: "弱", color: "bg-red-500", width: "33%" };
+});
 
 async function handleRegister() {
   try {
@@ -53,14 +68,25 @@ async function handleRegister() {
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700">密碼</label>
-          <input
-            v-model="password"
-            type="password"
-            required
-            minlength="6"
-            class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-            placeholder="至少 6 碼"
-          />
+          <div class="relative mt-1">
+            <input
+              v-model="password"
+              :type="showPassword ? 'text' : 'password'"
+              required
+              minlength="6"
+              class="block w-full rounded-lg border border-gray-300 px-3 py-2 pr-10 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+              placeholder="至少 6 碼"
+            />
+            <button type="button" @click="showPassword = !showPassword" class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm">
+              {{ showPassword ? '🙈' : '👁️' }}
+            </button>
+          </div>
+          <div v-if="password.length > 0" class="mt-2">
+            <div class="h-1.5 w-full rounded-full bg-gray-200 overflow-hidden">
+              <div :class="passwordStrength.color" :style="{ width: passwordStrength.width }" class="h-full rounded-full transition-all duration-300"></div>
+            </div>
+            <p class="mt-0.5 text-xs text-gray-400">密碼強度：{{ passwordStrength.label }}</p>
+          </div>
         </div>
 
         <p v-if="error" class="text-sm text-red-600">{{ error }}</p>

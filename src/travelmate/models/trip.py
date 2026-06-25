@@ -44,6 +44,8 @@ class Trip(Base, TimestampMixin):
     expenses = relationship("Expense", back_populates="trip", lazy="selectin", cascade="all, delete-orphan")
     memories = relationship("Memory", back_populates="trip", lazy="selectin", cascade="all, delete-orphan")
     pois = relationship("POI", back_populates="trip", lazy="selectin", cascade="all, delete-orphan")
+    packing_items = relationship("PackingItem", back_populates="trip", lazy="selectin", cascade="all, delete-orphan")
+    polls = relationship("Poll", back_populates="trip", lazy="selectin", cascade="all, delete-orphan")
 
 
 class TripMember(Base, TimestampMixin):

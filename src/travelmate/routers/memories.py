@@ -12,6 +12,7 @@ from src.travelmate.models.memory import Memory
 from src.travelmate.models.trip import Trip, TripMember
 from src.travelmate.models.user import User
 from src.travelmate.schemas.memory import MemoryCreate, MemoryResponse, MemoryUpdate
+from src.travelmate.utils import sanitize, sanitize_dict
 
 router = APIRouter(tags=["memories"])
 
@@ -85,8 +86,8 @@ async def create_memory(
     memory = Memory(
         trip_id=trip_id,
         user_id=user.id,
-        title=body.title,
-        content=body.content,
+        title=sanitize(body.title) or body.title,
+        content=sanitize(body.content),
         photo_urls=_serialize_photo_urls(body.photo_urls),
         date=body.date,
     )
@@ -113,7 +114,7 @@ async def update_memory(
     if memory.user_id != user.id:
         raise HTTPException(status_code=403, detail="Not authorized to edit this memory")
 
-    update_data = body.model_dump(exclude_unset=True)
+    update_data = sanitize_dict(body.model_dump(exclude_unset=True), ["title", "content"])
     # Handle photo_urls serialization
     if "photo_urls" in update_data:
         update_data["photo_urls"] = _serialize_photo_urls(update_data["photo_urls"])

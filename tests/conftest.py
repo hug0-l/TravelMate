@@ -7,6 +7,10 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from src.travelmate.database import get_db
+from src.travelmate.config import settings
+
+settings.rate_limit_enabled = False
+
 from src.travelmate.main import app
 from src.travelmate.models import Base
 
